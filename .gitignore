@@ -6,7 +6,7 @@ dist
 *.log
 
 # graphify
-graphify-out/
+graphify-out
 
 # claude
-.claude/
+.claude
