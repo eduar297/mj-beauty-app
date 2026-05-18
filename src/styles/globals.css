@@ -1,0 +1,80 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --gold: #c9a96e;
+  --gold-light: #e2c898;
+  --gold-dim: rgba(201, 169, 110, 0.12);
+  --rose: #d4a5a0;
+  --bg: #0d0c0a;
+  --bg-card: #161410;
+  --bg-elevated: #1e1b17;
+  --bg-hover: #252117;
+  --border: rgba(201, 169, 110, 0.1);
+  --border-strong: rgba(201, 169, 110, 0.22);
+  --text-primary: #f5f0e8;
+  --text-secondary: #c8bfaf;
+  --text-muted: #6a6050;
+  --sidebar-bg: #0a0908;
+  --sidebar-active: rgba(201, 169, 110, 0.1);
+  --sidebar-w: 220px;
+}
+
+[data-theme="rose"] {
+  --gold: #c47b72;
+  --gold-light: #e0a09a;
+  --gold-dim: rgba(196, 123, 114, 0.1);
+  --bg: #fdf8f4;
+  --bg-card: #fff8f5;
+  --bg-elevated: #ffffff;
+  --bg-hover: #f5ede8;
+  --border: rgba(196, 123, 114, 0.12);
+  --border-strong: rgba(196, 123, 114, 0.28);
+  --text-primary: #2a1f1c;
+  --text-secondary: #7a5a55;
+  --text-muted: #b09090;
+  --sidebar-bg: #2a1f1c;
+  --sidebar-active: rgba(196, 123, 114, 0.15);
+}
+
+[data-theme="minimal"] {
+  --gold: #b8935a;
+  --gold-light: #d4b080;
+  --gold-dim: rgba(184, 147, 90, 0.1);
+  --bg: #f7f6f4;
+  --bg-card: #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-hover: #f0eeeb;
+  --border: rgba(0, 0, 0, 0.07);
+  --border-strong: rgba(0, 0, 0, 0.14);
+  --text-primary: #1a1814;
+  --text-secondary: #5a5550;
+  --text-muted: #9a9590;
+  --sidebar-bg: #1a1814;
+  --sidebar-active: rgba(184, 147, 90, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+html, body, #root { height: 100%; margin: 0; }
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text-primary);
+  -webkit-text-size-adjust: 100%;
+}
+
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 2px; }
+
+.font-serif { font-family: 'Playfair Display', serif; }
+
+@keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
+@keyframes slideInLeft { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+.fade-up { animation: fadeUp 0.5s ease forwards; }
+.slide-in-left { animation: slideInLeft 0.22s ease; }
+
+button { font-family: inherit; }
+input, select, textarea { font-family: inherit; }
