@@ -57,11 +57,11 @@ export default function Landing() {
       )}
 
       <main id="contenido">
-        <section className="min-h-[88vh] flex items-center justify-center px-4 py-20 sm:px-10 relative overflow-hidden">
-          <img src="/assets/hero-bg.png" alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover opacity-20 dark:opacity-40 pointer-events-none" />
+        <section className="sm:min-h-[88vh] flex items-start sm:items-center justify-center px-4 pt-8 pb-12 sm:py-20 sm:px-10 relative overflow-hidden">
+          {/* <img src="/assets/hero-bg.png" alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover opacity-20 dark:opacity-40 pointer-events-none" /> */}
           <div className="absolute inset-0 bg-gradient-to-b from-bg via-transparent to-bg pointer-events-none" />
           <div className="relative z-10 max-w-3xl text-center w-full">
-            <img src="/assets/logo.jpeg" alt={`Logo ${brand}`} className="w-20 h-20 sm:w-24 sm:h-24 mx-auto mb-4 rounded-full object-cover border border-gold/30 shadow-lg shadow-gold/10" />
+            <img src="/assets/logo.jpeg" alt={`Logo ${brand}`} className="w-44 h-44 sm:w-32 sm:h-32 mx-auto mb-5 rounded-full object-cover border border-gold/30 shadow-lg shadow-gold/10" />
             <div className="inline-flex items-center gap-2 border border-border-strong rounded-full px-4 py-1 mb-6 text-[11px] text-gold uppercase tracking-widest">
               <span className="w-1.5 h-1.5 rounded-full bg-gold" aria-hidden="true" /> {s.tagline || 'Salón de Belleza Premium'}
             </div>

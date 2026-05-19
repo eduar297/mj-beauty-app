@@ -18,24 +18,29 @@
   --text-muted: #6a6050;
   --sidebar-bg: #0a0908;
   --sidebar-active: rgba(201, 169, 110, 0.1);
+  --sidebar-hover: var(--bg-hover);
   --sidebar-w: 220px;
 }
 
+/* Tema "rose" — paleta sacada del logo MJ Beauty:
+   blanco crema + negro serif + rosa cereza vibrante. */
 [data-theme="rose"] {
-  --gold: #c47b72;
-  --gold-light: #e0a09a;
-  --gold-dim: rgba(196, 123, 114, 0.1);
-  --bg: #fdf8f4;
-  --bg-card: #fff8f5;
+  --gold: #e8649a;                          /* rosa "Beauty" del logo */
+  --gold-light: #f4a7c0;                    /* rosa flor de cerezo */
+  --gold-dim: rgba(232, 100, 154, 0.10);
+  --rose: #f4a7c0;
+  --bg: #fdf8f4;                            /* crema fondo */
+  --bg-card: #ffffff;                       /* blanco puro card */
   --bg-elevated: #ffffff;
-  --bg-hover: #f5ede8;
-  --border: rgba(196, 123, 114, 0.12);
-  --border-strong: rgba(196, 123, 114, 0.28);
-  --text-primary: #2a1f1c;
-  --text-secondary: #7a5a55;
-  --text-muted: #b09090;
-  --sidebar-bg: #2a1f1c;
-  --sidebar-active: rgba(196, 123, 114, 0.15);
+  --bg-hover: #fdedf2;                      /* hover rosa muy suave */
+  --border: rgba(26, 26, 26, 0.08);
+  --border-strong: rgba(232, 100, 154, 0.32);
+  --text-primary: #1a1a1a;                  /* negro como las letras MJ */
+  --text-secondary: #555555;                /* gris medio */
+  --text-muted: #8a8a8a;
+  --sidebar-bg: #1a1a1a;                    /* sidebar negro como el logo */
+  --sidebar-active: rgba(232, 100, 154, 0.22);
+  --sidebar-hover: rgba(255, 255, 255, 0.06); /* hover sutil sobre fondo oscuro */
 }
 
 [data-theme="minimal"] {

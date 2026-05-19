@@ -59,7 +59,7 @@ export default function Login() {
 
   return (
     <div className="min-h-screen grid place-items-center bg-bg p-4 relative overflow-hidden">
-      <img src="/assets/hero-bg.png" alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover opacity-10" />
+      {/* <img src="/assets/hero-bg.png" alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover opacity-10" /> */}
 
       <div className="relative z-10 w-full max-w-md bg-bg-card border border-border-strong rounded-3xl p-7 shadow-2xl fade-up">
         <div className="text-center mb-6">

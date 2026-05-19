@@ -18,7 +18,7 @@ function ProtectedRoute({ children }) {
 
 export default function App() {
   useEffect(() => {
-    const theme = localStorage.getItem('mj-theme') || 'noir';
+    const theme = localStorage.getItem('mj-theme') || 'rose';
     document.documentElement.setAttribute('data-theme', theme);
   }, []);
 

@@ -70,16 +70,16 @@ export default function Dashboard() {
         <nav className="flex-1 p-3 flex flex-col gap-0.5">
           {allowed.map(t => (
             <NavLink key={t.id} to={`/dashboard/${t.id}`}
-              className={({ isActive }) => `flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm transition ${isActive ? 'bg-[var(--sidebar-active)] text-gold border-l-2 border-gold font-semibold' : 'text-text-muted hover:bg-bg-hover'}`}>
+              className={({ isActive }) => `flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm transition ${isActive ? 'bg-[var(--sidebar-active)] text-gold border-l-2 border-gold font-semibold' : 'text-text-muted hover:bg-[var(--sidebar-hover)]'}`}>
               <Icon name={t.icon} size={16} /> {t.label}
             </NavLink>
           ))}
         </nav>
         <div className="p-3 border-t border-border space-y-1">
-          <button onClick={() => nav('/')} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm text-text-muted hover:bg-bg-hover">
+          <button onClick={() => nav('/')} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm text-text-muted hover:bg-[var(--sidebar-hover)]">
             <Icon name="home" size={15} /> Ver sitio web
           </button>
-          <button onClick={() => { logout(); nav('/'); }} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm text-text-muted hover:bg-bg-hover">
+          <button onClick={() => { logout(); nav('/'); }} className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-sm text-text-muted hover:bg-[var(--sidebar-hover)]">
             <Icon name="logout" size={15} /> Cerrar sesión
           </button>
         </div>

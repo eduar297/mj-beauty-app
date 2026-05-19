@@ -234,18 +234,23 @@ function layoutAppointments(appts, hourPx, startHour) {
 
 // ── PRIMITIVES de tiempo ──────────────────────────────────────────────
 // Columna de horas: cada label se ancla al inicio del slot de su hora.
+// El primer label se posiciona ligeramente debajo del borde superior para
+// que no quede cortado por el contenedor.
 function TimeGutter({ hours, hourPx }) {
   return (
-    <div className="w-16 flex-shrink-0 relative bg-bg-elevated/20 border-r border-border" style={{ height: hours.length * hourPx }}>
-      {hours.map((h, i) => (
-        <div
-          key={h}
-          style={{ top: i * hourPx }}
-          className="absolute right-2 left-0 text-[10px] font-medium text-text-muted text-right pr-2 leading-none -translate-y-1/2 select-none"
-        >
-          <span className="bg-bg-card px-1">{fmt12h(h)}</span>
-        </div>
-      ))}
+    <div className="w-16 flex-shrink-0 relative bg-bg-elevated/30 border-r border-border" style={{ height: hours.length * hourPx }}>
+      {hours.map((h, i) => {
+        const isFirst = i === 0;
+        return (
+          <div
+            key={h}
+            style={{ top: isFirst ? 6 : i * hourPx }}
+            className={`absolute right-2 left-0 text-[10px] font-medium text-text-muted text-right pr-2 leading-none select-none ${isFirst ? '' : '-translate-y-1/2'}`}
+          >
+            <span className="bg-bg-card px-1">{fmt12h(h)}</span>
+          </div>
+        );
+      })}
     </div>
   );
 }
