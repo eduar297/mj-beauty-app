@@ -179,6 +179,33 @@ drop policy if exists "services_storage_upload" on storage.objects;
 create policy "services_storage_upload" on storage.objects for insert
 with check (bucket_id = 'services');
 
+drop policy if exists "services_storage_delete" on storage.objects;
+create policy "services_storage_delete" on storage.objects for delete
+using (bucket_id = 'services');
+
+-- ───── Tabla: service_photos (galería multi-foto por servicio) ──────
+create table if not exists service_photos (
+  id uuid primary key default uuid_generate_v4(),
+  service_id uuid not null references services(id) on delete cascade,
+  kind text not null check (kind in ('normal','pair','combined')),
+  url text,                 -- usado por kind = 'normal' y 'combined'
+  before_url text,          -- usado por kind = 'pair'
+  after_url  text,          -- usado por kind = 'pair'
+  caption text,
+  featured boolean default false,
+  sort_order int default 0,
+  created_at timestamptz default now()
+);
+
+create index if not exists service_photos_service_id_idx on service_photos(service_id);
+create index if not exists service_photos_featured_idx   on service_photos(featured) where featured = true;
+
+alter table service_photos enable row level security;
+drop policy if exists "service_photos_public_read" on service_photos;
+create policy "service_photos_public_read" on service_photos for select using (true);
+drop policy if exists "service_photos_anon_all"   on service_photos;
+create policy "service_photos_anon_all"   on service_photos for all using (true);
+
 -- ───── Seed: un admin inicial ───────────────────────────────────────
 -- IMPORTANTE: cambia este PIN después de crear todo
 -- Solo inserta si todavía no existe ningún admin (el PIN ya no es UNIQUE).

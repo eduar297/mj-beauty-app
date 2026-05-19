@@ -10,9 +10,11 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
+    "browser-image-compression": "^2.0.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.26.0"
+    "react-router-dom": "^6.26.0",
+    "yet-another-react-lightbox": "^3.32.0"
   },
   "devDependencies": {
     "@vitejs/plugin-react": "^4.3.1",

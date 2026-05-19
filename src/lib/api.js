@@ -1,4 +1,12 @@
 import { supabase } from './supabase';
+import imageCompression from 'browser-image-compression';
+
+// Extrae el path interno (después de "/services/") de una URL pública del bucket.
+const pathFromUrl = (url) => {
+  if (!url) return null;
+  const m = url.match(/\/services\/(.+)$/);
+  return m ? m[1] : null;
+};
 
 // ─── STAFF ───────────────────────────────────────────────────────────
 export const api_staff = {
@@ -29,13 +37,58 @@ export const api_services = {
   create: (data) => supabase.from('services').insert(data).select().single(),
   update: (id, data) => supabase.from('services').update(data).eq('id', id).select().single(),
   remove: (id) => supabase.from('services').update({ active: false }).eq('id', id),
-  uploadPhoto: async (file, name) => {
-    const ext = file.name.split('.').pop();
-    const path = `${Date.now()}-${name.replace(/\W+/g, '-')}.${ext}`;
-    const { error } = await supabase.storage.from('services').upload(path, file);
+  uploadPhoto: async (file, name, serviceId) => {
+    const compressed = await imageCompression(file, {
+      maxSizeMB: 1.2, maxWidthOrHeight: 2000, useWebWorker: true,
+    });
+    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    const slug = (name || 'foto').replace(/\W+/g, '-').toLowerCase();
+    const folder = serviceId ? `${serviceId}/` : '';
+    const path = `${folder}${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${slug}.${ext}`;
+    const { error } = await supabase.storage.from('services').upload(path, compressed);
     if (error) throw error;
-    const { data } = supabase.storage.from('services').getPublicUrl(path);
-    return data.publicUrl;
+    return supabase.storage.from('services').getPublicUrl(path).data.publicUrl;
+  },
+};
+
+// ─── SERVICE PHOTOS (galería multi-foto por servicio) ────────────────
+export const api_service_photos = {
+  byService: (serviceId) =>
+    supabase.from('service_photos').select('*').eq('service_id', serviceId)
+      .order('sort_order').order('created_at'),
+
+  listAll: () =>
+    supabase.from('service_photos').select('*, services(name,cat,popular)')
+      .order('created_at', { ascending: false }),
+
+  // Landing: featured manuales + fotos de servicios populares, sin duplicar.
+  listForLanding: async (limit = 12) => {
+    const [{ data: feat }, { data: pop }] = await Promise.all([
+      supabase.from('service_photos').select('*, services(name,cat)')
+        .eq('featured', true).order('created_at', { ascending: false }),
+      supabase.from('service_photos').select('*, services!inner(name,cat,popular)')
+        .eq('services.popular', true).order('created_at', { ascending: false }),
+    ]);
+    const seen = new Set();
+    const out = [];
+    for (const p of [...(feat || []), ...(pop || [])]) {
+      if (seen.has(p.id)) continue;
+      seen.add(p.id); out.push(p);
+      if (out.length >= limit) break;
+    }
+    return { data: out };
+  },
+
+  create: (data) => supabase.from('service_photos').insert(data).select().single(),
+  update: (id, data) => supabase.from('service_photos').update(data).eq('id', id).select().single(),
+
+  remove: async (id) => {
+    const { data: row } = await supabase.from('service_photos').select('*').eq('id', id).maybeSingle();
+    if (row) {
+      const paths = [row.url, row.before_url, row.after_url].map(pathFromUrl).filter(Boolean);
+      if (paths.length) await supabase.storage.from('services').remove(paths);
+    }
+    return supabase.from('service_photos').delete().eq('id', id);
   },
 };
 

@@ -1,17 +1,25 @@
 import { useNavigate, Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Icon, Modal, Field, Input, Select, Btn, GoldDivider } from '../components/ui.jsx';
-import { api_appointments, api_services, api_settings } from '../lib/api';
+import { Icon, Modal, Field, Input, Select, Btn, GoldDivider, BeforeAfterPair, PhotoTile, Lightbox, photosToSlides } from '../components/ui.jsx';
+import { api_appointments, api_services, api_service_photos, api_settings } from '../lib/api';
 
 export default function Landing() {
   const nav = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [bookingOpen, setBookingOpen] = useState(false);
   const [settings, setSettings] = useState(null);
+  const [galleryPhotos, setGalleryPhotos] = useState([]);
+  const [lightbox, setLightbox] = useState(null); // { slides, index }
 
   useEffect(() => {
     api_settings.get().then(({ data }) => setSettings(data || {}));
+    api_service_photos.listForLanding(8).then(({ data }) => setGalleryPhotos(data || []));
   }, []);
+
+  const openLightboxAt = (photoId) => {
+    const { slides, indexFor } = photosToSlides(galleryPhotos);
+    setLightbox({ slides, index: indexFor[photoId] ?? 0 });
+  };
 
   const cats = [
     { label: 'Uñas',     sub: 'Manicure & Pedicure',       img: '/assets/svc-nails.jpeg',    cat: 'Uñas' },
@@ -32,6 +40,7 @@ export default function Landing() {
         <div className="font-serif text-xl font-bold text-gold">{brand.split(' ')[0]} <span className="italic font-normal">{brand.split(' ').slice(1).join(' ') || 'Beauty'}</span></div>
         <div className="hidden md:flex gap-8 text-sm text-text-secondary">
           <a href="#servicios" className="hover:text-gold transition-colors focus-visible:outline-none focus-visible:text-gold">Servicios</a>
+          <Link to="/galeria"  className="hover:text-gold transition-colors focus-visible:outline-none focus-visible:text-gold">Galería</Link>
           <a href="#nosotras"  className="hover:text-gold transition-colors focus-visible:outline-none focus-visible:text-gold">Nosotras</a>
           <a href="#contacto"  className="hover:text-gold transition-colors focus-visible:outline-none focus-visible:text-gold">Contacto</a>
         </div>
@@ -47,6 +56,7 @@ export default function Landing() {
       {menuOpen && (
         <div className="md:hidden fixed top-16 inset-x-0 z-40 bg-bg-card border-b border-border p-4 flex flex-col gap-1 shadow-2xl">
           <a href="#servicios" onClick={() => setMenuOpen(false)} className="py-3 px-2 border-b border-border">Servicios</a>
+          <Link to="/galeria"  onClick={() => setMenuOpen(false)} className="py-3 px-2 border-b border-border">Galería</Link>
           <a href="#nosotras"  onClick={() => setMenuOpen(false)} className="py-3 px-2 border-b border-border">Nosotras</a>
           <a href="#contacto"  onClick={() => setMenuOpen(false)} className="py-3 px-2 border-b border-border">Contacto</a>
           <div className="flex gap-2 mt-3">
@@ -106,6 +116,30 @@ export default function Landing() {
             </div>
           </div>
         </section>
+
+        {galleryPhotos.length > 0 && (
+          <section id="galeria" className="px-4 py-20 sm:px-10 scroll-mt-20">
+            <div className="max-w-5xl mx-auto">
+              <div className="text-center mb-10">
+                <div className="text-[11px] uppercase tracking-widest text-gold mb-3">Nuestro trabajo</div>
+                <h2 className="font-serif font-semibold mb-2" style={{ fontSize: 'clamp(28px,5vw,40px)' }}>Antes &amp; Después</h2>
+                <p className="text-text-muted text-sm max-w-md mx-auto">Resultados reales de nuestras clientas.</p>
+              </div>
+              <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
+                {galleryPhotos.map(p => (
+                  p.kind === 'pair'
+                    ? <BeforeAfterPair key={p.id} beforeUrl={p.before_url} afterUrl={p.after_url} caption={p.caption || p.services?.name} size="sm" onClick={() => openLightboxAt(p.id)} />
+                    : <PhotoTile key={p.id} url={p.url} kind={p.kind} caption={p.caption || p.services?.name} size="sm" onClick={() => openLightboxAt(p.id)} />
+                ))}
+              </div>
+              <div className="text-center mt-8">
+                <Link to="/galeria" className="inline-block px-7 py-3 border border-border-strong rounded-lg text-gold font-semibold hover:bg-gold-dim transition cursor-pointer">
+                  Ver galería completa →
+                </Link>
+              </div>
+            </div>
+          </section>
+        )}
 
         <section id="nosotras" className="px-4 py-20 sm:px-10 scroll-mt-20">
           <div className="max-w-5xl mx-auto grid gap-10 md:grid-cols-2 items-center">
@@ -221,6 +255,8 @@ export default function Landing() {
       <Modal open={bookingOpen} onClose={() => setBookingOpen(false)} title="Reservar Cita">
         <BookingForm onClose={() => setBookingOpen(false)} settings={settings} />
       </Modal>
+
+      <Lightbox open={!!lightbox} onClose={() => setLightbox(null)} slides={lightbox?.slides || []} index={lightbox?.index || 0} />
     </div>
   );
 }

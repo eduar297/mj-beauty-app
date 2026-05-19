@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Icon, Modal, Field, Input, Select, Btn, ListLoading, CAT_COLORS, CAT_ICONS } from '../components/ui.jsx';
-import { api_services, api_appointments, api_settings } from '../lib/api';
+import { Icon, Modal, Field, Input, Select, Btn, ListLoading, CAT_COLORS, CAT_ICONS, BeforeAfterPair, PhotoTile, Lightbox, photosToSlides } from '../components/ui.jsx';
+import { api_services, api_service_photos, api_appointments, api_settings } from '../lib/api';
 
 const TODAY = () => new Date().toISOString().slice(0, 10);
 
@@ -11,14 +11,27 @@ export default function Services() {
   const cats = ['Uñas', 'Pelo', 'Faciales', 'Cejas', 'Pestañas'];
   const [activeCat, setActiveCat] = useState(paramCat || 'Uñas');
   const [services, setServices] = useState(null); // null = loading
+  const [photosBy, setPhotosBy] = useState({}); // service_id → photos[]
   const [settings, setSettings] = useState(null);
   const [bookingService, setBookingService] = useState(null);
+  const [lightbox, setLightbox] = useState(null); // { slides, index }
   const fmt = n => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n);
 
   useEffect(() => {
     api_services.listPublic().then(({ data }) => setServices(data || []));
+    api_service_photos.listAll().then(({ data }) => {
+      const byService = {};
+      for (const p of (data || [])) (byService[p.service_id] ??= []).push(p);
+      setPhotosBy(byService);
+    });
     api_settings.get().then(({ data }) => setSettings(data || {}));
   }, []);
+
+  const openLightboxFor = (serviceId, photoId) => {
+    const photos = photosBy[serviceId] || [];
+    const { slides, indexFor } = photosToSlides(photos);
+    setLightbox({ slides, index: indexFor[photoId] ?? 0 });
+  };
 
   const filtered = (services || []).filter(s => s.cat === activeCat);
   const SVC_IMGS = { 'Uñas': '/assets/svc-nails.png', 'Pelo': '/assets/svc-hair.png', 'Faciales': '/assets/svc-facial.png', 'Cejas': '/assets/svc-cejas.png', 'Pestañas': '/assets/svc-pestanas.png' };
@@ -75,6 +88,7 @@ export default function Services() {
                       <Icon name="clock" size={12} /> {s.duration} min
                     </div>
                     <p className="text-xs text-text-muted leading-relaxed mb-3 line-clamp-2">{s.description}</p>
+                    <ServicePhotoStrip photos={photosBy[s.id]} onOpen={(photoId) => openLightboxFor(s.id, photoId)} />
                     <button onClick={() => setBookingService(s.name)}
                       style={{ background: `${color}22`, borderColor: `${color}44`, color }}
                       className="w-full py-2 rounded-lg text-xs font-bold border cursor-pointer hover:opacity-90 transition">Reservar</button>
@@ -99,6 +113,40 @@ export default function Services() {
           />
         )}
       </Modal>
+
+      <Lightbox open={!!lightbox} onClose={() => setLightbox(null)} slides={lightbox?.slides || []} index={lightbox?.index || 0} />
+    </div>
+  );
+}
+
+function ServicePhotoStrip({ photos, onOpen }) {
+  if (!photos || photos.length === 0) return null;
+  const MAX = 4;
+  const visible = photos.slice(0, MAX);
+  const extra = photos.length - visible.length;
+  return (
+    <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1">
+      {visible.map((p, i) => (
+        <button key={p.id} type="button" onClick={() => onOpen(p.id)}
+          className="relative flex-shrink-0 rounded-lg overflow-hidden border border-border bg-bg-elevated cursor-pointer hover:border-gold/50 transition"
+          style={{ width: p.kind === 'pair' ? 96 : 56, height: 56 }}
+          aria-label="Ver foto">
+          {p.kind === 'pair' ? (
+            <div className="grid grid-cols-2 gap-px bg-border w-full h-full">
+              <img src={p.before_url} alt="Antes" loading="lazy" className="w-full h-full object-cover" />
+              <img src={p.after_url} alt="Después" loading="lazy" className="w-full h-full object-cover" />
+            </div>
+          ) : (
+            <img src={p.url} alt="" loading="lazy" className="w-full h-full object-cover" />
+          )}
+          {p.kind === 'combined' && (
+            <span className="absolute bottom-0 inset-x-0 bg-bg-card/85 text-gold text-[8px] font-bold text-center uppercase tracking-wider py-0.5">A/D</span>
+          )}
+          {i === visible.length - 1 && extra > 0 && (
+            <span className="absolute inset-0 bg-black/55 text-text-primary text-xs font-bold grid place-items-center">+{extra}</span>
+          )}
+        </button>
+      ))}
     </div>
   );
 }

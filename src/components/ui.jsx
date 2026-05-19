@@ -1,3 +1,6 @@
+import LB from 'yet-another-react-lightbox';
+import 'yet-another-react-lightbox/styles.css';
+
 // Iconos SVG inline reutilizables
 export function Icon({ name, size = 18, color = 'currentColor' }) {
   const paths = {
@@ -209,6 +212,82 @@ export function Modal({ open, onClose, title, children }) {
         {children}
       </div>
     </div>
+  );
+}
+
+// ─── Galería de fotos de servicios ───────────────────────────────────
+const TILE_H = { sm: 'h-32', md: 'h-44', lg: 'h-56' };
+
+function PhotoSide({ url, label, h }) {
+  return (
+    <div className={`relative ${h} bg-bg-elevated overflow-hidden`}>
+      {url
+        ? <img src={url} alt={label} loading="lazy" className="w-full h-full object-cover" />
+        : <div className="w-full h-full grid place-items-center text-text-muted text-xs">Sin foto</div>}
+      <span className="absolute top-2 left-2 bg-bg-card/90 text-gold border border-border-strong text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">{label}</span>
+    </div>
+  );
+}
+
+export function BeforeAfterPair({ beforeUrl, afterUrl, caption, onClick, size = 'md' }) {
+  const h = TILE_H[size] || TILE_H.md;
+  return (
+    <div onClick={onClick}
+      className={`rounded-2xl overflow-hidden border border-border bg-bg-card ${onClick ? 'cursor-pointer hover:-translate-y-0.5 motion-reduce:transform-none transition' : ''}`}>
+      <div className="grid grid-cols-2 gap-px bg-border">
+        <PhotoSide url={beforeUrl} label="ANTES"   h={h} />
+        <PhotoSide url={afterUrl}  label="DESPUÉS" h={h} />
+      </div>
+      {caption && <div className="px-3 py-2 text-xs text-text-muted truncate">{caption}</div>}
+    </div>
+  );
+}
+
+export function PhotoTile({ url, kind = 'normal', caption, onClick, size = 'md' }) {
+  const h = TILE_H[size] || TILE_H.md;
+  return (
+    <div onClick={onClick}
+      className={`relative rounded-2xl overflow-hidden border border-border bg-bg-card ${onClick ? 'cursor-pointer hover:-translate-y-0.5 motion-reduce:transform-none transition' : ''}`}>
+      <div className={`${h} bg-bg-elevated`}>
+        {url
+          ? <img src={url} alt={caption || ''} loading="lazy" className="w-full h-full object-cover" />
+          : <div className="w-full h-full grid place-items-center text-text-muted text-xs">Sin foto</div>}
+      </div>
+      {kind === 'combined' && (
+        <span className="absolute top-2 left-2 bg-bg-card/90 text-gold border border-border-strong text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Antes / Después</span>
+      )}
+      {caption && <div className="px-3 py-2 text-xs text-text-muted truncate">{caption}</div>}
+    </div>
+  );
+}
+
+// Aplana service_photos a slides para el lightbox.
+// Devuelve {slides, indexFor} — indexFor(photoId) → posición del primer slide del item.
+export function photosToSlides(photos) {
+  const slides = [];
+  const indexFor = {};
+  for (const p of photos) {
+    indexFor[p.id] = slides.length;
+    if (p.kind === 'pair') {
+      if (p.before_url) slides.push({ src: p.before_url, alt: 'Antes',    description: p.caption ? `ANTES · ${p.caption}` : 'ANTES' });
+      if (p.after_url)  slides.push({ src: p.after_url,  alt: 'Después',  description: p.caption ? `DESPUÉS · ${p.caption}` : 'DESPUÉS' });
+    } else if (p.url) {
+      slides.push({ src: p.url, alt: p.caption || '', description: p.kind === 'combined' ? (p.caption ? `Antes / Después · ${p.caption}` : 'Antes / Después') : (p.caption || '') });
+    }
+  }
+  return { slides, indexFor };
+}
+
+export function Lightbox({ open, onClose, slides, index = 0 }) {
+  return (
+    <LB
+      open={open}
+      close={onClose}
+      slides={slides}
+      index={index}
+      styles={{ container: { backgroundColor: 'rgba(0,0,0,0.92)' } }}
+      controller={{ closeOnBackdropClick: true }}
+    />
   );
 }
 

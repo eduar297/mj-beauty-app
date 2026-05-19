@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Header } from '../Dashboard.jsx';
-import { Icon, Btn, Modal, Field, Input, Select, ListLoading, Spinner, CAT_COLORS, CAT_ICONS } from '../../components/ui.jsx';
-import { api_services } from '../../lib/api';
+import { Icon, Btn, Modal, Field, Input, Select, ListLoading, Spinner, CAT_COLORS, CAT_ICONS, BeforeAfterPair, PhotoTile } from '../../components/ui.jsx';
+import { api_services, api_service_photos } from '../../lib/api';
 
 const CATS = ['Uñas','Pelo','Faciales','Cejas','Pestañas'];
 
@@ -162,6 +162,183 @@ function ServiceForm({ initial, onSaved, onDelete }) {
           {saving ? (f.id ? 'Guardando…' : 'Creando…') : (f.id ? 'Guardar' : 'Crear')}
         </Btn>
       </div>
+
+      <div className="mt-6 pt-5 border-t border-border">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <div className="text-[11px] font-semibold text-text-muted uppercase tracking-wider">Galería</div>
+            <div className="text-xs text-text-muted mt-0.5">Fotos normales y pares antes/después</div>
+          </div>
+        </div>
+        {f.id
+          ? <PhotosGallery serviceId={f.id} serviceName={f.name} />
+          : <div className="text-xs text-text-muted bg-bg-card border border-dashed border-border rounded-lg p-3">Guarda el servicio primero para añadir fotos a la galería.</div>}
+      </div>
+    </div>
+  );
+}
+
+const KIND_LABEL = {
+  normal:   'Foto normal',
+  pair:     'Antes / Después (2 fotos)',
+  combined: 'Antes / Después (1 sola foto)',
+};
+
+function PhotosGallery({ serviceId, serviceName }) {
+  const [list, setList] = useState(null);
+  const [err, setErr] = useState('');
+  const [adding, setAdding] = useState(false);
+
+  const load = async () => {
+    const { data } = await api_service_photos.byService(serviceId);
+    setList(data || []);
+  };
+  useEffect(() => { load(); }, [serviceId]);
+
+  const toggleFeatured = async (p) => {
+    await api_service_photos.update(p.id, { featured: !p.featured });
+    load();
+  };
+  const removePhoto = async (p) => {
+    if (!confirm('¿Eliminar esta foto?')) return;
+    await api_service_photos.remove(p.id);
+    load();
+  };
+
+  return (
+    <div>
+      {list === null
+        ? <ListLoading label="Cargando galería…" />
+        : list.length === 0
+          ? <div className="text-xs text-text-muted bg-bg-card border border-dashed border-border rounded-lg p-3 mb-3">Aún no hay fotos en la galería.</div>
+          : (
+            <div className="grid gap-3 mb-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
+              {list.map(p => (
+                <div key={p.id} className="relative">
+                  {p.kind === 'pair'
+                    ? <BeforeAfterPair beforeUrl={p.before_url} afterUrl={p.after_url} caption={p.caption} size="sm" />
+                    : <PhotoTile url={p.url} kind={p.kind} caption={p.caption} size="sm" />}
+                  <div className="absolute top-1.5 right-1.5 flex gap-1">
+                    <button onClick={() => toggleFeatured(p)} title={p.featured ? 'Quitar destacada' : 'Marcar destacada'}
+                      className={`w-7 h-7 rounded-full grid place-items-center border ${p.featured ? 'bg-gold text-[#0d0c0a] border-gold' : 'bg-bg-card/90 text-text-secondary border-border-strong'} cursor-pointer`}>
+                      <Icon name="star" size={12} color={p.featured ? '#0d0c0a' : 'currentColor'} />
+                    </button>
+                    <button onClick={() => removePhoto(p)} title="Eliminar"
+                      className="w-7 h-7 rounded-full grid place-items-center bg-bg-card/90 text-red-400 border border-border-strong cursor-pointer">
+                      <Icon name="close" size={12} />
+                    </button>
+                  </div>
+                  <div className="text-[10px] text-text-muted mt-1 px-1">{KIND_LABEL[p.kind]}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+      {err && (
+        <div role="alert" className="text-red-400 text-xs bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 mb-2">
+          {err}
+        </div>
+      )}
+
+      {adding
+        ? <AddPhotoPanel serviceId={serviceId} serviceName={serviceName}
+            onCancel={() => setAdding(false)}
+            onAdded={() => { setAdding(false); setErr(''); load(); }}
+            onError={(e) => setErr(e.message || 'No se pudo subir la foto')} />
+        : <Btn icon="plus" small onClick={() => setAdding(true)}>Agregar foto</Btn>}
+    </div>
+  );
+}
+
+function AddPhotoPanel({ serviceId, serviceName, onAdded, onCancel, onError }) {
+  const [kind, setKind] = useState('normal');
+  const [caption, setCaption] = useState('');
+  const [files, setFiles] = useState({ single: null, before: null, after: null });
+  const [uploading, setUploading] = useState(false);
+  const singleRef = useRef();
+  const beforeRef = useRef();
+  const afterRef = useRef();
+
+  const reset = () => { setFiles({ single: null, before: null, after: null }); setCaption(''); };
+
+  const canSubmit = !uploading && (
+    (kind === 'normal' && files.single) ||
+    (kind === 'combined' && files.single) ||
+    (kind === 'pair' && files.before && files.after)
+  );
+
+  const submit = async () => {
+    setUploading(true);
+    try {
+      const data = { service_id: serviceId, kind, caption: caption || null };
+      if (kind === 'pair') {
+        data.before_url = await api_services.uploadPhoto(files.before, `${serviceName}-antes`, serviceId);
+        data.after_url  = await api_services.uploadPhoto(files.after,  `${serviceName}-despues`, serviceId);
+      } else {
+        data.url = await api_services.uploadPhoto(files.single, serviceName || 'servicio', serviceId);
+      }
+      const res = await api_service_photos.create(data);
+      if (res.error) throw res.error;
+      reset();
+      onAdded();
+    } catch (e) {
+      onError(e);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="bg-bg-card border border-border rounded-xl p-3.5">
+      <div className="mb-3">
+        <label className="block text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-1.5">Tipo</label>
+        <Select value={kind} onChange={e => { setKind(e.target.value); reset(); }}
+          options={[
+            { value: 'normal',   label: KIND_LABEL.normal },
+            { value: 'pair',     label: KIND_LABEL.pair },
+            { value: 'combined', label: KIND_LABEL.combined },
+          ]} />
+      </div>
+
+      {kind === 'pair' ? (
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <FilePicker label="Antes"    file={files.before} fileRef={beforeRef} onPick={(f) => setFiles(s => ({ ...s, before: f }))} disabled={uploading} />
+          <FilePicker label="Después"  file={files.after}  fileRef={afterRef}  onPick={(f) => setFiles(s => ({ ...s, after:  f }))} disabled={uploading} />
+        </div>
+      ) : (
+        <div className="mb-3">
+          <FilePicker label={kind === 'combined' ? 'Foto antes/después en una' : 'Foto'} file={files.single} fileRef={singleRef} onPick={(f) => setFiles(s => ({ ...s, single: f }))} disabled={uploading} />
+        </div>
+      )}
+
+      <div className="mb-3">
+        <label className="block text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-1.5">Descripción (opcional)</label>
+        <Input value={caption} onChange={e => setCaption(e.target.value)} placeholder="Ej: Manicure francesa rosada" />
+      </div>
+
+      <div className="flex gap-2">
+        <Btn variant="ghost" small onClick={onCancel} disabled={uploading}>Cancelar</Btn>
+        <Btn small icon="save" onClick={submit} loading={uploading} disabled={!canSubmit}>
+          {uploading ? 'Subiendo…' : 'Subir'}
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
+function FilePicker({ label, file, fileRef, onPick, disabled }) {
+  const url = file ? URL.createObjectURL(file) : null;
+  return (
+    <div>
+      <div className="text-[10px] font-semibold text-text-muted uppercase tracking-wider mb-1.5">{label}</div>
+      <div onClick={() => !disabled && fileRef.current.click()}
+        className="h-24 rounded-lg border-2 border-dashed border-border bg-bg-elevated cursor-pointer relative overflow-hidden grid place-items-center">
+        {url
+          ? <img src={url} alt="" className="w-full h-full object-cover" />
+          : <div className="text-text-muted text-xs">Toca para elegir</div>}
+      </div>
+      <input ref={fileRef} type="file" accept="image/*" className="hidden"
+        onChange={e => onPick(e.target.files?.[0] || null)} />
     </div>
   );
 }

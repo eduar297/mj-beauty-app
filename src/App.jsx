@@ -3,6 +3,7 @@ import { Routes, Route, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './hooks/useAuth.jsx';
 import Landing from './pages/Landing.jsx';
 import Services from './pages/Services.jsx';
+import Galeria from './pages/Galeria.jsx';
 import Login from './pages/Login.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 
@@ -28,6 +29,7 @@ export default function App() {
         <Route path="/" element={<Landing />} />
         <Route path="/servicios" element={<Services />} />
         <Route path="/servicios/:cat" element={<Services />} />
+        <Route path="/galeria" element={<Galeria />} />
         <Route path="/login" element={<Login />} />
         <Route path="/dashboard/*" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       </Routes>
