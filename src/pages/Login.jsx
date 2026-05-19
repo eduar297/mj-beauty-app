@@ -98,6 +98,8 @@ export default function Login() {
                       initials={s.initials || s.name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
                       color={s.color || 'var(--gold)'}
                       size={52}
+                      photoUrl={s.photo_url}
+                      alt={s.name}
                     />
                     <div className="text-sm font-semibold text-center leading-tight break-words w-full" title={s.name}>{s.name}</div>
                     <div className="text-[10px] uppercase tracking-widest text-text-muted">{s.role}</div>
@@ -115,6 +117,8 @@ export default function Login() {
                 initials={selected.initials || selected.name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
                 color={selected.color || 'var(--gold)'}
                 size={40}
+                photoUrl={selected.photo_url}
+                alt={selected.name}
               />
               <div className="flex-1 min-w-0">
                 <div className="font-semibold text-sm truncate">{selected.name}</div>

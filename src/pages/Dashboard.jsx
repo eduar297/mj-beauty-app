@@ -125,7 +125,7 @@ export default function Dashboard() {
               <div className="w-1.5 h-1.5 rounded-full bg-gold" />
               <span className="text-[11px] text-gold font-semibold capitalize">{user?.role}</span>
             </div>
-            <Avatar initials={user?.initials || user?.name?.[0] || '?'} size={30} />
+            <Avatar initials={user?.initials || user?.name?.[0] || '?'} color={user?.color} size={30} photoUrl={user?.photo_url} alt={user?.name} />
             <div className="hidden md:block text-xs text-text-secondary font-medium">{user?.name}</div>
           </div>
         </header>

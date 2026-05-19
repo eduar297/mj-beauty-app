@@ -8,7 +8,7 @@ const TODAY = () => new Date().toISOString().slice(0, 10);
 export default function Services() {
   const { cat: paramCat } = useParams();
   const nav = useNavigate();
-  const cats = ['Uñas', 'Pelo', 'Faciales', 'Cejas', 'Pestañas'];
+  const cats = ['Uñas', 'Pedicura', 'Pelo', 'Faciales', 'Cejas', 'Pestañas'];
   const [activeCat, setActiveCat] = useState(paramCat || 'Uñas');
   const [services, setServices] = useState(null); // null = loading
   const [photosBy, setPhotosBy] = useState({}); // service_id → photos[]
@@ -34,7 +34,7 @@ export default function Services() {
   };
 
   const filtered = (services || []).filter(s => s.cat === activeCat);
-  const SVC_IMGS = { 'Uñas': '/assets/svc-nails.png', 'Pelo': '/assets/svc-hair.png', 'Faciales': '/assets/svc-facial.png', 'Cejas': '/assets/svc-cejas.png', 'Pestañas': '/assets/svc-pestanas.png' };
+  const SVC_IMGS = { 'Uñas': '/assets/svc-nails.png', 'Pedicura': '/assets/svc-nails.png', 'Pelo': '/assets/svc-hair.png', 'Faciales': '/assets/svc-facial.png', 'Cejas': '/assets/svc-cejas.png', 'Pestañas': '/assets/svc-pestanas.png' };
 
   return (
     <div className="min-h-screen bg-bg text-text">

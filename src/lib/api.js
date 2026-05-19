@@ -13,13 +13,24 @@ export const api_staff = {
   list: () => supabase.from('staff').select('*').eq('active', true).order('name'),
   // Lista pública (sin PIN ni email) para mostrar avatares en la pantalla de login.
   listForLogin: () =>
-    supabase.from('staff').select('id,name,role,color,initials').eq('active', true).order('name'),
+    supabase.from('staff').select('id,name,role,color,initials,photo_url').eq('active', true).order('name'),
   // Verifica que el PIN coincida con la empleada seleccionada.
   byIdAndPin: (id, pin) =>
     supabase.from('staff').select('*').eq('id', id).eq('pin', pin).eq('active', true).maybeSingle(),
   create: (data) => supabase.from('staff').insert(data).select().single(),
   update: (id, data) => supabase.from('staff').update(data).eq('id', id).select().single(),
   remove: (id) => supabase.from('staff').update({ active: false }).eq('id', id),
+  uploadPhoto: async (file, name) => {
+    const compressed = await imageCompression(file, {
+      maxSizeMB: 0.6, maxWidthOrHeight: 800, useWebWorker: true,
+    });
+    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    const slug = (name || 'empleada').replace(/\W+/g, '-').toLowerCase();
+    const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${slug}.${ext}`;
+    const { error } = await supabase.storage.from('staff').upload(path, compressed);
+    if (error) throw error;
+    return supabase.storage.from('staff').getPublicUrl(path).data.publicUrl;
+  },
 };
 
 // ─── CLIENTS ─────────────────────────────────────────────────────────

@@ -29,6 +29,8 @@ create table if not exists staff (
 alter table staff drop constraint if exists staff_pin_key;
 -- Migration: el correo de empleadas ya no se usa.
 alter table staff drop column if exists email;
+-- Migration: foto de perfil de empleadas.
+alter table staff add column if not exists photo_url text;
 
 -- ───── Tabla: clients ───────────────────────────────────────────────
 create table if not exists clients (
@@ -51,7 +53,7 @@ alter table clients drop column if exists email;
 create table if not exists services (
   id uuid primary key default uuid_generate_v4(),
   name text not null,
-  cat text not null check (cat in ('Uñas','Pelo','Faciales','Cejas','Pestañas')),
+  cat text not null check (cat in ('Uñas','Pedicura','Pelo','Faciales','Cejas','Pestañas')),
   duration int not null default 60,
   price numeric(12,0) not null default 0,
   description text,
@@ -60,6 +62,11 @@ create table if not exists services (
   active boolean default true,
   created_at timestamptz default now()
 );
+
+-- Migration: agregar 'Pedicura' a la lista permitida (idempotente).
+alter table services drop constraint if exists services_cat_check;
+alter table services add constraint services_cat_check
+  check (cat in ('Uñas','Pedicura','Pelo','Faciales','Cejas','Pestañas'));
 
 -- ───── Tabla: appointments ──────────────────────────────────────────
 create table if not exists appointments (
@@ -135,6 +142,11 @@ insert into storage.buckets (id, name, public)
 values ('services', 'services', true)
 on conflict do nothing;
 
+-- ───── Storage: bucket para fotos de perfil de empleadas ───────────
+insert into storage.buckets (id, name, public)
+values ('staff', 'staff', true)
+on conflict do nothing;
+
 -- ───── RLS (Row Level Security) ─────────────────────────────────────
 -- Para esta versión simple: lectura pública en services + clients
 -- (auth de admin se hace por PIN, no por sesión Supabase Auth)
@@ -182,6 +194,19 @@ with check (bucket_id = 'services');
 drop policy if exists "services_storage_delete" on storage.objects;
 create policy "services_storage_delete" on storage.objects for delete
 using (bucket_id = 'services');
+
+-- Storage: políticas del bucket staff
+drop policy if exists "staff_storage_public" on storage.objects;
+create policy "staff_storage_public" on storage.objects for select
+using (bucket_id = 'staff');
+
+drop policy if exists "staff_storage_upload" on storage.objects;
+create policy "staff_storage_upload" on storage.objects for insert
+with check (bucket_id = 'staff');
+
+drop policy if exists "staff_storage_delete" on storage.objects;
+create policy "staff_storage_delete" on storage.objects for delete
+using (bucket_id = 'staff');
 
 -- ───── Tabla: service_photos (galería multi-foto por servicio) ──────
 create table if not exists service_photos (

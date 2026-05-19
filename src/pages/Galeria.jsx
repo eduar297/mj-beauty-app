@@ -3,7 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Icon, ListLoading, BeforeAfterPair, PhotoTile, Lightbox, photosToSlides, CAT_COLORS, CAT_ICONS } from '../components/ui.jsx';
 import { api_service_photos } from '../lib/api';
 
-const CATS = ['Uñas', 'Pelo', 'Faciales', 'Cejas', 'Pestañas'];
+const CATS = ['Uñas', 'Pedicura', 'Pelo', 'Faciales', 'Cejas', 'Pestañas'];
 const TYPES = [
   { id: 'all',     label: 'Todas' },
   { id: 'ba',      label: 'Antes / Después' },

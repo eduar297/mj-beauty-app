@@ -22,7 +22,8 @@ export default function Landing() {
   };
 
   const cats = [
-    { label: 'Uñas',     sub: 'Manicure & Pedicure',       img: '/assets/svc-nails.jpeg',    cat: 'Uñas' },
+    { label: 'Uñas',     sub: 'Manicure',                  img: '/assets/svc-nails.jpeg',    cat: 'Uñas' },
+    { label: 'Pedicura', sub: 'Pies & Spa',                img: '/assets/svc-pedicure.jpeg',    cat: 'Pedicura' },
     { label: 'Cabello',  sub: 'Cortes, Tintes & Más',      img: '/assets/svc-hair.jpeg',     cat: 'Pelo' },
     { label: 'Faciales', sub: 'Limpieza & Tratamientos',   img: '/assets/svc-facial.jpeg',   cat: 'Faciales' },
     { label: 'Cejas',    sub: 'Diseño & Laminado',         img: '/assets/svc-cejas.jpeg',    cat: 'Cejas' },

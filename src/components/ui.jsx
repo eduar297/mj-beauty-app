@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import LB from 'yet-another-react-lightbox';
 import 'yet-another-react-lightbox/styles.css';
 
@@ -22,6 +23,7 @@ export function Icon({ name, size = 18, color = 'currentColor' }) {
     clock: "M12 22a10 10 0 100-20 10 10 0 000 20zm0-14v4l3 3",
     sparkle: "M12 2l2 7h7l-5.5 4 2 7L12 16l-5.5 4 2-7L3 9h7z",
     nail: "M7 3h10l1 5-6 14-6-14z",
+    foot: "M9 3c1.7 0 3 1.6 3 3.5S10.7 10 9 10 6 8.4 6 6.5 7.3 3 9 3zM15 2c1.1 0 2 1 2 2.3s-.9 2.3-2 2.3-2-1-2-2.3S13.9 2 15 2zM18 5.5c.8 0 1.5.8 1.5 1.8S18.8 9 18 9s-1.5-.8-1.5-1.8.7-1.7 1.5-1.7zM7 11c2 0 4 2 4 4v2c0 1.7-1.3 3-3 3H7c-1.7 0-3-1.3-3-3v-2c0-2 1-4 3-4z",
     hair: "M8 3c0 0 1 4-1 8s-1 8 5 9M16 3c0 0-1 4 1 8s1 8-5 9",
     eye: "M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z M12 9a3 3 0 100 6 3 3 0 000-6z",
     face: "M12 22a10 10 0 100-20 10 10 0 000 20zM8 14s1.5 2 4 2 4-2 4-2M9 9h.01M15 9h.01",
@@ -48,8 +50,8 @@ export function Icon({ name, size = 18, color = 'currentColor' }) {
   );
 }
 
-export const CAT_COLORS = { 'Uñas': '#c9a96e', 'Pelo': '#d4a5a0', 'Faciales': '#a8c4c0', 'Cejas': '#c4b8a0', 'Pestañas': '#b8a0c4' };
-export const CAT_ICONS = { 'Uñas': 'nail', 'Pelo': 'hair', 'Faciales': 'face', 'Cejas': 'brow', 'Pestañas': 'eye' };
+export const CAT_COLORS = { 'Uñas': '#c9a96e', 'Pedicura': '#d8b87a', 'Pelo': '#d4a5a0', 'Faciales': '#a8c4c0', 'Cejas': '#c4b8a0', 'Pestañas': '#b8a0c4' };
+export const CAT_ICONS = { 'Uñas': 'nail', 'Pedicura': 'foot', 'Pelo': 'hair', 'Faciales': 'face', 'Cejas': 'brow', 'Pestañas': 'eye' };
 
 export function StatusBadge({ status }) {
   const map = {
@@ -65,7 +67,18 @@ export function StatusBadge({ status }) {
   return <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wider whitespace-nowrap ${s.cls}`}>{s.label}</span>;
 }
 
-export function Avatar({ initials, color = 'var(--gold)', size = 36 }) {
+export function Avatar({ initials, color = 'var(--gold)', size = 36, photoUrl, alt }) {
+  if (photoUrl) {
+    return (
+      <img
+        src={photoUrl}
+        alt={alt || initials || ''}
+        loading="lazy"
+        style={{ width: size, height: size, borderColor: `${color}66` }}
+        className="rounded-full object-cover flex-shrink-0 border"
+      />
+    );
+  }
   return (
     <div style={{ width: size, height: size, background: `${color}22`, border: `1px solid ${color}44`, color, fontSize: size * 0.33 }}
       className="rounded-full grid place-items-center font-bold flex-shrink-0 font-sans">
@@ -185,6 +198,122 @@ export function ColorPicker({ value, onChange, presets = COLOR_PRESETS }) {
           );
         })}
       </div>
+    </div>
+  );
+}
+
+export function TagInput({ value = [], onChange, placeholder = '', color, suggestions = [] }) {
+  const [input, setInput] = useState('');
+  const [highlight, setHighlight] = useState(0);
+  const [open, setOpen] = useState(false);
+  const tagColor = color || 'var(--gold)';
+
+  const matches = (() => {
+    const q = input.trim().toLowerCase();
+    const taken = new Set(value.map(v => v.toLowerCase()));
+    // Dedup case-insensitive y filtra los ya seleccionados.
+    const seen = new Set();
+    const list = [];
+    for (const s of suggestions) {
+      const key = s.toLowerCase();
+      if (taken.has(key) || seen.has(key)) continue;
+      if (q && !key.includes(q)) continue;
+      seen.add(key);
+      list.push(s);
+      if (list.length >= 8) break;
+    }
+    return list;
+  })();
+
+  const addTag = (raw) => {
+    const t = (raw || '').trim();
+    if (!t) return;
+    if (value.some(v => v.toLowerCase() === t.toLowerCase())) { setInput(''); return; }
+    onChange([...value, t]);
+    setInput('');
+    setHighlight(0);
+  };
+  const removeTag = (i) => onChange(value.filter((_, idx) => idx !== i));
+
+  const handleKey = (e) => {
+    if (e.key === 'ArrowDown' && matches.length) {
+      e.preventDefault();
+      setOpen(true);
+      setHighlight(h => (h + 1) % matches.length);
+    } else if (e.key === 'ArrowUp' && matches.length) {
+      e.preventDefault();
+      setOpen(true);
+      setHighlight(h => (h - 1 + matches.length) % matches.length);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (open && matches[highlight]) addTag(matches[highlight]);
+      else addTag(input);
+    } else if (e.key === 'Escape') {
+      setOpen(false);
+    } else if (e.key === 'Backspace' && input === '' && value.length > 0) {
+      e.preventDefault();
+      removeTag(value.length - 1);
+    }
+  };
+  const handleChange = (e) => {
+    const v = e.target.value;
+    setOpen(true);
+    setHighlight(0);
+    if (v.includes(',')) {
+      const parts = v.split(',');
+      const last = parts.pop();
+      for (const p of parts) addTag(p);
+      setInput(last);
+    } else {
+      setInput(v);
+    }
+  };
+  const handleBlur = () => {
+    // Pequeño delay para que el click en una opción no se pierda por el blur.
+    setTimeout(() => {
+      setOpen(false);
+      if (input.trim()) addTag(input);
+    }, 120);
+  };
+
+  const showDropdown = open && matches.length > 0;
+
+  return (
+    <div className="relative">
+      <div className="w-full bg-bg-card border border-border rounded-lg px-2 py-1.5 flex flex-wrap items-center gap-1.5 focus-within:border-gold transition-colors">
+        {value.map((t, i) => (
+          <span key={`${t}-${i}`}
+            style={{ background: `${tagColor}1f`, color: tagColor, borderColor: `${tagColor}55` }}
+            className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border whitespace-nowrap">
+            {t}
+            <button type="button" onClick={() => removeTag(i)} aria-label={`Quitar ${t}`}
+              className="hover:text-red-400 cursor-pointer leading-none text-sm">×</button>
+          </span>
+        ))}
+        <input
+          value={input}
+          onChange={handleChange}
+          onKeyDown={handleKey}
+          onFocus={() => setOpen(true)}
+          onBlur={handleBlur}
+          placeholder={value.length === 0 ? placeholder : ''}
+          className="flex-1 min-w-[100px] bg-transparent outline-none text-sm py-1 px-1 text-text"
+        />
+      </div>
+
+      {showDropdown && (
+        <div className="absolute z-50 left-0 right-0 mt-1 bg-bg-elevated border border-border-strong rounded-lg shadow-2xl max-h-56 overflow-y-auto py-1">
+          {matches.map((m, i) => (
+            <button key={m} type="button"
+              onMouseDown={(e) => { e.preventDefault(); addTag(m); }}
+              onMouseEnter={() => setHighlight(i)}
+              className={`w-full text-left px-3 py-1.5 text-sm cursor-pointer flex items-center gap-2 ${i === highlight ? 'bg-bg-hover text-gold' : 'text-text-secondary hover:bg-bg-hover'}`}>
+              <span className="w-1 h-1 rounded-full bg-gold/60 flex-shrink-0" aria-hidden="true" />
+              {m}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

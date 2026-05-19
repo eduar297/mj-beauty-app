@@ -45,7 +45,8 @@ function computeHourRange(appts) {
 export default function Agenda() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
-  const [view, setView] = useState('week');
+  // En móvil arrancamos en Día porque Semana aplasta 7 columnas en <400px.
+  const [view, setView] = useState(() => (typeof window !== 'undefined' && window.innerWidth < 768) ? 'day' : 'week');
   const [anchor, setAnchor] = useState(() => new Date());
   const [appts, setAppts] = useState(null);
   const [editing, setEditing] = useState(null);
@@ -238,16 +239,16 @@ function layoutAppointments(appts, hourPx, startHour) {
 // que no quede cortado por el contenedor.
 function TimeGutter({ hours, hourPx }) {
   return (
-    <div className="w-16 flex-shrink-0 relative bg-bg-elevated/30 border-r border-border" style={{ height: hours.length * hourPx }}>
+    <div className="w-11 sm:w-16 flex-shrink-0 sticky left-0 z-10 relative bg-bg-elevated/95 backdrop-blur border-r border-border" style={{ height: hours.length * hourPx }}>
       {hours.map((h, i) => {
         const isFirst = i === 0;
         return (
           <div
             key={h}
             style={{ top: isFirst ? 6 : i * hourPx }}
-            className={`absolute right-2 left-0 text-[10px] font-medium text-text-muted text-right pr-2 leading-none select-none ${isFirst ? '' : '-translate-y-1/2'}`}
+            className={`absolute right-1.5 left-0 text-[10px] font-medium text-text-muted text-right pr-1.5 sm:pr-2 leading-none select-none ${isFirst ? '' : '-translate-y-1/2'}`}
           >
-            <span className="bg-bg-card px-1">{fmt12h(h)}</span>
+            <span className="bg-bg-card px-1 whitespace-nowrap">{fmt12h(h)}</span>
           </div>
         );
       })}
@@ -430,53 +431,58 @@ function WeekView({ anchor, appointments, onClickAppt, onPickDay }) {
 
   return (
     <div className="bg-bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-      {/* Header de días */}
-      <div className="flex border-b border-border bg-bg-elevated/40">
-        <div className="w-16 flex-shrink-0 border-r border-border" />
-        {days.map((d, i) => {
-          const isToday_ = isSameDay(d, today);
-          return (
-            <button key={i} onClick={() => onPickDay(d)}
-              className={`flex-1 min-w-0 py-3 cursor-pointer transition border-r border-border last:border-0 group ${
-                isToday_ ? 'bg-gold-dim' : 'hover:bg-bg-hover'
-              }`}>
-              <div className={`text-[10px] uppercase tracking-widest font-semibold text-center ${isToday_ ? 'text-gold' : 'text-text-muted group-hover:text-text-secondary'}`}>
-                {DAY_LABELS[i]}
-              </div>
-              <div className="mt-1.5 grid place-items-center">
-                <div className={`w-9 h-9 grid place-items-center rounded-full text-sm font-bold transition ${
-                  isToday_
-                    ? 'bg-gold text-[#0d0c0a] shadow-md shadow-gold/30'
-                    : 'text-text-primary group-hover:bg-bg-hover'
-                }`}>
-                  {d.getDate()}
-                </div>
-              </div>
-            </button>
-          );
-        })}
-      </div>
+      <div ref={containerRef} className="max-h-[calc(100vh-320px)] min-h-[460px] overflow-auto">
+        <div className="flex flex-col" style={{ minWidth: 660 }}>
+          {/* Header de días (sticky top) */}
+          <div className="sticky top-0 z-20 flex border-b border-border bg-bg-elevated/95 backdrop-blur">
+            <div className="w-11 sm:w-16 flex-shrink-0 sticky left-0 z-30 bg-bg-elevated border-r border-border" />
+            {days.map((d, i) => {
+              const isToday_ = isSameDay(d, today);
+              return (
+                <button key={i} onClick={() => onPickDay(d)}
+                  className={`min-w-[88px] flex-1 py-2 sm:py-3 cursor-pointer transition border-r border-border last:border-0 group ${
+                    isToday_ ? 'bg-gold-dim' : 'hover:bg-bg-hover'
+                  }`}>
+                  <div className={`text-[10px] uppercase tracking-widest font-semibold text-center ${isToday_ ? 'text-gold' : 'text-text-muted group-hover:text-text-secondary'}`}>
+                    {DAY_LABELS[i]}
+                  </div>
+                  <div className="mt-1 sm:mt-1.5 grid place-items-center">
+                    <div className={`w-7 h-7 sm:w-9 sm:h-9 grid place-items-center rounded-full text-[13px] sm:text-sm font-bold transition ${
+                      isToday_
+                        ? 'bg-gold text-[#0d0c0a] shadow-md shadow-gold/30'
+                        : 'text-text-primary group-hover:bg-bg-hover'
+                    }`}>
+                      {d.getDate()}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
 
-      <div ref={containerRef} className="flex max-h-[calc(100vh-320px)] min-h-[460px] overflow-y-auto">
-        <TimeGutter hours={hours} hourPx={HOUR_PX_WEEK} />
-        <div className="flex flex-1 relative" style={{ height: totalHeight }}>
-          {days.map((d, i) => {
-            const dayAppts = byDay.get(toISO(d)) || [];
-            const blocks = layoutAppointments(dayAppts, HOUR_PX_WEEK, startHour);
-            const isToday_ = isSameDay(d, today);
-            return (
-              <div key={i} className={`relative flex-1 min-w-0 border-r border-border last:border-0 ${isToday_ ? 'bg-gold-dim/15' : ''}`}>
-                <HourLines hours={hours} hourPx={HOUR_PX_WEEK} />
-                {isToday_ && nowTop >= 0 && nowTop <= totalHeight && <NowLine top={nowTop} />}
-                {blocks.map(({ a, top, height, leftPct, widthPct }) => (
-                  <EventBlock key={a.id} a={a} top={top} height={height}
-                    left={`calc(${leftPct}% + 3px)`}
-                    width={`calc(${widthPct}% - 6px)`}
-                    onClick={() => onClickAppt(a)} />
-                ))}
-              </div>
-            );
-          })}
+          {/* Body */}
+          <div className="flex">
+            <TimeGutter hours={hours} hourPx={HOUR_PX_WEEK} />
+            <div className="flex flex-1 relative" style={{ height: totalHeight }}>
+              {days.map((d, i) => {
+                const dayAppts = byDay.get(toISO(d)) || [];
+                const blocks = layoutAppointments(dayAppts, HOUR_PX_WEEK, startHour);
+                const isToday_ = isSameDay(d, today);
+                return (
+                  <div key={i} className={`relative min-w-[88px] flex-1 border-r border-border last:border-0 ${isToday_ ? 'bg-gold-dim/15' : ''}`}>
+                    <HourLines hours={hours} hourPx={HOUR_PX_WEEK} />
+                    {isToday_ && nowTop >= 0 && nowTop <= totalHeight && <NowLine top={nowTop} />}
+                    {blocks.map(({ a, top, height, leftPct, widthPct }) => (
+                      <EventBlock key={a.id} a={a} top={top} height={height}
+                        left={`calc(${leftPct}% + 3px)`}
+                        width={`calc(${widthPct}% - 6px)`}
+                        onClick={() => onClickAppt(a)} />
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -500,9 +506,11 @@ function MonthView({ anchor, appointments, onPickDay }) {
 
   return (
     <div className="bg-bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-      <div className="grid grid-cols-7 border-b border-border bg-bg-elevated/40">
+     <div className="overflow-auto max-h-[calc(100vh-260px)]">
+      <div style={{ minWidth: 660 }}>
+      <div className="sticky top-0 z-20 grid grid-cols-7 border-b border-border bg-bg-elevated/95 backdrop-blur">
         {DAY_LABELS.map((l, i) => (
-          <div key={i} className="py-3 text-center text-[10px] uppercase tracking-widest font-semibold text-text-muted border-r border-border last:border-0">{l}</div>
+          <div key={i} className="py-2.5 text-center text-[10px] uppercase tracking-widest font-semibold text-text-muted border-r border-border last:border-0">{l}</div>
         ))}
       </div>
       <div className="grid grid-cols-7 grid-rows-6 auto-rows-fr" style={{ minHeight: 'calc(100vh - 280px)' }}>
@@ -549,6 +557,8 @@ function MonthView({ anchor, appointments, onPickDay }) {
           );
         })}
       </div>
+      </div>
+     </div>
     </div>
   );
 }
