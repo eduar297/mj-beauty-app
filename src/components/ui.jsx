@@ -27,6 +27,16 @@ export function Icon({ name, size = 18, color = 'currentColor' }) {
     transfer: "M7 16V4m0 0L3 8m4-4l4 4M17 8v12m0 0l4-4m-4 4l-4-4",
     menu: "M3 6h18M3 12h18M3 18h18",
     logout: "M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9",
+    settings: "M12 15a3 3 0 100-6 3 3 0 000 6zM19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 01-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33h.01a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82v.01a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z",
+    phone: "M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.13.96.37 1.9.72 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.91.35 1.85.59 2.81.72A2 2 0 0122 16.92z",
+    mail: "M4 4h16a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V6a2 2 0 012-2zM22 6l-10 7L2 6",
+    map: "M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0zM12 7a3 3 0 100 6 3 3 0 000-6z",
+    instagram: "M16 3H8a5 5 0 00-5 5v8a5 5 0 005 5h8a5 5 0 005-5V8a5 5 0 00-5-5zM12 15.5a3.5 3.5 0 110-7 3.5 3.5 0 010 7zM17.5 6.5h.01",
+    facebook: "M18 2h-3a5 5 0 00-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 011-1h3z",
+    tiktok: "M9 12a4 4 0 104 4V4a5 5 0 005 5",
+    save: "M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2zM17 21v-8H7v8M7 3v5h8",
+    whatsapp: "M3 21l1.65-3.8a9 9 0 113.4 2.9zM9 10a.5.5 0 011 0v1a.5.5 0 01-1 0zM14 10a.5.5 0 011 0v1a.5.5 0 01-1 0zM9 14c1 1 2 1.5 3 1.5s2-.5 3-1.5",
+    info: "M12 22a10 10 0 100-20 10 10 0 000 20zM12 8h.01M11 12h1v4h1",
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
@@ -61,19 +71,37 @@ export function Avatar({ initials, color = 'var(--gold)', size = 36 }) {
   );
 }
 
-export function Btn({ children, onClick, variant = 'primary', icon, small, type = 'button', disabled }) {
-  const base = 'inline-flex items-center gap-1.5 rounded-lg font-semibold whitespace-nowrap transition disabled:opacity-50';
+export function Spinner({ size = 14, color = 'currentColor' }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" className="animate-spin motion-reduce:hidden" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" stroke={color} strokeWidth="3" fill="none" strokeDasharray="50 50" strokeLinecap="round" opacity="0.8" />
+    </svg>
+  );
+}
+
+export function Btn({ children, onClick, variant = 'primary', icon, small, type = 'button', disabled, loading }) {
+  const base = 'inline-flex items-center gap-1.5 rounded-lg font-semibold whitespace-nowrap transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer';
   const sz = small ? 'px-3.5 py-1.5 text-xs' : 'px-5 py-2.5 text-sm';
   const v = {
     primary: 'bg-gold text-[#0d0c0a] hover:opacity-90',
     ghost:   'bg-border text-text-secondary border border-border-strong hover:bg-bg-hover',
     outline: 'bg-transparent text-gold border border-border-strong hover:bg-gold-dim',
   }[variant];
+  const isDisabled = disabled || loading;
   return (
-    <button type={type} onClick={onClick} disabled={disabled} className={`${base} ${sz} ${v}`}>
-      {icon && <Icon name={icon} size={small ? 12 : 14} />}
+    <button type={type} onClick={onClick} disabled={isDisabled} aria-busy={loading || undefined} className={`${base} ${sz} ${v}`}>
+      {loading ? <Spinner size={small ? 12 : 14} /> : (icon && <Icon name={icon} size={small ? 12 : 14} />)}
       {children}
     </button>
+  );
+}
+
+// Bloque de carga inline para listas mientras llega data del servidor.
+export function ListLoading({ label = 'Cargando…' }) {
+  return (
+    <div role="status" aria-live="polite" className="flex items-center justify-center gap-2 py-10 text-text-muted text-sm">
+      <Spinner size={14} color="var(--gold)" /> {label}
+    </div>
   );
 }
 
@@ -99,6 +127,69 @@ export function Select({ value, onChange, options }) {
       className="w-full bg-bg-card border border-border rounded-lg px-3 py-2.5 text-text text-base outline-none focus:border-gold appearance-none cursor-pointer">
       {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
     </select>
+  );
+}
+
+// Paleta sugerida — alineada con CAT_COLORS y los temas de la marca.
+const COLOR_PRESETS = [
+  '#c9a96e', // gold
+  '#e0a09a', // rose claro
+  '#c47b72', // rose oscuro
+  '#d4a5a0', // pelo
+  '#a8c4c0', // facial
+  '#c4b8a0', // cejas
+  '#b8a0c4', // pestañas
+  '#8a6f4a', // bronce
+  '#6b8e7f', // verde sage
+  '#7a6d8e', // lavanda
+  '#1a1814', // negro suave
+];
+
+export function ColorPicker({ value, onChange, presets = COLOR_PRESETS }) {
+  const v = value || presets[0];
+  const set = (hex) => onChange({ target: { value: hex } });
+  return (
+    <div className="flex flex-col gap-2.5">
+      <div className="flex items-center gap-2.5">
+        <label className="relative w-11 h-11 rounded-lg border border-border-strong overflow-hidden cursor-pointer shrink-0" style={{ background: v }}>
+          <input
+            type="color"
+            value={v}
+            onChange={(e) => set(e.target.value)}
+            aria-label="Elegir color personalizado"
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+          />
+        </label>
+        <div className="flex-1 min-w-0">
+          <div className="text-[10px] uppercase tracking-widest text-text-muted">Color</div>
+          <div className="font-mono text-sm text-text-primary">{v.toUpperCase()}</div>
+        </div>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {presets.map((c) => {
+          const active = c.toLowerCase() === v.toLowerCase();
+          return (
+            <button
+              key={c}
+              type="button"
+              onClick={() => set(c)}
+              aria-label={`Color ${c}`}
+              aria-pressed={active}
+              title={c}
+              className={`w-7 h-7 rounded-full border transition cursor-pointer ${active ? 'ring-2 ring-gold ring-offset-2 ring-offset-bg-elevated border-transparent' : 'border-border-strong hover:scale-110 motion-reduce:transform-none'}`}
+              style={{ background: c }}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+export function Textarea({ value, onChange, placeholder, rows = 4 }) {
+  return (
+    <textarea value={value} onChange={onChange} placeholder={placeholder} rows={rows}
+      className="w-full bg-bg-card border border-border rounded-lg px-3 py-2.5 text-text text-base outline-none focus:border-gold resize-y leading-relaxed" />
   );
 }
 

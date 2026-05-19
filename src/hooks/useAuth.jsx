@@ -16,8 +16,8 @@ export function AuthProvider({ children }) {
     setLoading(false);
   }, []);
 
-  const loginWithPin = async (pin) => {
-    const { data, error } = await api_staff.byPin(pin);
+  const loginWithPin = async (staffId, pin) => {
+    const { data, error } = await api_staff.byIdAndPin(staffId, pin);
     if (error) throw error;
     if (!data) throw new Error('PIN incorrecto');
     setUser(data);

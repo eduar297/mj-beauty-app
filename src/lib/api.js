@@ -3,7 +3,12 @@ import { supabase } from './supabase';
 // ─── STAFF ───────────────────────────────────────────────────────────
 export const api_staff = {
   list: () => supabase.from('staff').select('*').eq('active', true).order('name'),
-  byPin: (pin) => supabase.from('staff').select('*').eq('pin', pin).eq('active', true).maybeSingle(),
+  // Lista pública (sin PIN ni email) para mostrar avatares en la pantalla de login.
+  listForLogin: () =>
+    supabase.from('staff').select('id,name,role,color,initials').eq('active', true).order('name'),
+  // Verifica que el PIN coincida con la empleada seleccionada.
+  byIdAndPin: (id, pin) =>
+    supabase.from('staff').select('*').eq('id', id).eq('pin', pin).eq('active', true).maybeSingle(),
   create: (data) => supabase.from('staff').insert(data).select().single(),
   update: (id, data) => supabase.from('staff').update(data).eq('id', id).select().single(),
   remove: (id) => supabase.from('staff').update({ active: false }).eq('id', id),
@@ -36,21 +41,39 @@ export const api_services = {
 
 // ─── APPOINTMENTS ────────────────────────────────────────────────────
 export const api_appointments = {
-  list: (date) => {
+  // list('2026-05-18')                 → un solo día (compat anterior)
+  // list({ from: '..', to: '..' })     → rango inclusivo (semana / mes)
+  list: (arg) => {
     let q = supabase.from('appointments').select('*, clients(name), staff(name,color), services(name,cat)');
-    if (date) q = q.eq('date', date);
-    return q.order('time');
+    if (typeof arg === 'string') q = q.eq('date', arg);
+    else if (arg && typeof arg === 'object') {
+      if (arg.from) q = q.gte('date', arg.from);
+      if (arg.to)   q = q.lte('date', arg.to);
+    }
+    return q.order('date').order('time');
   },
   create: (data) => supabase.from('appointments').insert(data).select().single(),
   update: (id, data) => supabase.from('appointments').update(data).eq('id', id).select().single(),
   remove: (id) => supabase.from('appointments').delete().eq('id', id),
-  // Realtime
+  // Realtime — cada llamada crea su propio canal para permitir varios suscriptores.
   subscribe: (callback) => {
+    const name = `appointments_${Math.random().toString(36).slice(2, 9)}`;
     return supabase
-      .channel('appointments_changes')
+      .channel(name)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, callback)
       .subscribe();
   },
+};
+
+// ─── SITE SETTINGS (personalización pública) ─────────────────────────
+export const api_settings = {
+  get: () => supabase.from('site_settings').select('*').eq('id', 1).maybeSingle(),
+  update: (data) =>
+    supabase.from('site_settings')
+      .update({ ...data, updated_at: new Date().toISOString() })
+      .eq('id', 1)
+      .select()
+      .single(),
 };
 
 // ─── TRANSACTIONS ────────────────────────────────────────────────────
@@ -62,8 +85,9 @@ export const api_transactions = {
   },
   create: (data) => supabase.from('transactions').insert(data).select().single(),
   subscribe: (callback) => {
+    const name = `transactions_${Math.random().toString(36).slice(2, 9)}`;
     return supabase
-      .channel('transactions_changes')
+      .channel(name)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, callback)
       .subscribe();
   },

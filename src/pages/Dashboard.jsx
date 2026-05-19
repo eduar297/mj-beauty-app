@@ -1,33 +1,67 @@
 import { Routes, Route, NavLink, useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth.jsx';
 import { Icon, Avatar } from '../components/ui.jsx';
+import { api_appointments } from '../lib/api';
 import Agenda from './dashboard/Agenda.jsx';
 import Clientes from './dashboard/Clientes.jsx';
 import Servicios from './dashboard/Servicios.jsx';
 import Empleadas from './dashboard/Empleadas.jsx';
 import Caja from './dashboard/Caja.jsx';
+import Configuracion from './dashboard/Configuracion.jsx';
 
 const TABS = [
-  { id: 'agenda',    label: 'Agenda',    icon: 'calendar', roles: ['admin','empleada'] },
-  { id: 'clientes',  label: 'Clientes',  icon: 'users',    roles: ['admin','empleada'] },
-  { id: 'servicios', label: 'Servicios', icon: 'scissors', roles: ['admin'] },
-  { id: 'empleadas', label: 'Empleadas', icon: 'staff',    roles: ['admin'] },
-  { id: 'caja',      label: 'Caja',      icon: 'cash',     roles: ['admin'] },
+  { id: 'agenda',        label: 'Agenda',        icon: 'calendar', roles: ['admin','empleada'] },
+  { id: 'clientes',      label: 'Clientes',      icon: 'users',    roles: ['admin','empleada'] },
+  { id: 'servicios',     label: 'Servicios',     icon: 'scissors', roles: ['admin'] },
+  { id: 'empleadas',     label: 'Empleadas',     icon: 'staff',    roles: ['admin'] },
+  { id: 'caja',          label: 'Caja',          icon: 'cash',     roles: ['admin'] },
+  { id: 'configuracion', label: 'Personalización', icon: 'settings', roles: ['admin'] },
 ];
 
 export default function Dashboard() {
   const { user, logout } = useAuth();
   const nav = useNavigate();
   const [drawer, setDrawer] = useState(false);
+  const [notif, setNotif] = useState(null); // { id, clientName, time, date }
+  const mountedAt = useRef(Date.now());
   const allowed = TABS.filter(t => t.roles.includes(user?.role));
+
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission().catch(() => {});
+    }
+  }, []);
+
+  useEffect(() => {
+    const ch = api_appointments.subscribe((payload) => {
+      if (payload.eventType !== 'INSERT') return;
+      const a = payload.new;
+      if (!a || a.status !== 'pending') return;
+      // Ignora citas creadas antes del montaje (evita ruido al recargar)
+      if (a.created_at && new Date(a.created_at).getTime() < mountedAt.current) return;
+      const clientName = (a.notes?.match(/Cliente web: ([^·]+)/) || [])[1]?.trim() || 'Cliente';
+      const item = { id: a.id, clientName, time: a.time?.slice(0, 5) || '', date: a.date || '' };
+      setNotif(item);
+      if ('Notification' in window && Notification.permission === 'granted') {
+        try {
+          new Notification('MJ Beauty · Nueva cita pendiente', {
+            body: `${clientName} · ${item.date} ${item.time}`,
+            icon: '/assets/logo.jpeg',
+          });
+        } catch {}
+      }
+      setTimeout(() => setNotif((cur) => (cur?.id === item.id ? null : cur)), 10000);
+    });
+    return () => { ch?.unsubscribe?.(); };
+  }, []);
 
   return (
     <div className="flex h-screen overflow-hidden bg-bg">
       {/* Desktop sidebar */}
       <aside className="hidden md:flex flex-col w-[220px] flex-shrink-0 bg-[var(--sidebar-bg)] border-r border-border">
         <div className="px-6 py-7 border-b border-border flex items-center gap-2.5">
-          <img src="/assets/logo.svg" alt="" className="w-9 h-9" />
+          <img src="/assets/logo.jpeg" alt="" className="w-9 h-9 rounded-full object-cover border border-gold/30" />
           <div>
             <div className="font-serif text-xl font-bold text-gold leading-none">MJ Beauty</div>
             <div className="text-[9px] tracking-widest uppercase text-text-muted mt-1">Panel</div>
@@ -104,8 +138,27 @@ export default function Dashboard() {
             <Route path="servicios" element={<Servicios />} />
             <Route path="empleadas" element={<Empleadas />} />
             <Route path="caja" element={<Caja />} />
+            <Route path="configuracion" element={<Configuracion />} />
           </Routes>
         </main>
+
+        {notif && (
+          <div role="status" aria-live="polite" className="fixed top-4 right-4 z-[300] bg-bg-elevated border-2 border-gold rounded-2xl shadow-2xl p-4 max-w-sm fade-up">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-lg grid place-items-center bg-gold-dim text-gold border border-border-strong flex-shrink-0">
+                <Icon name="bell" size={16} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="font-semibold text-sm">Nueva cita pendiente</div>
+                <div className="text-xs text-text-muted mt-0.5 truncate">{notif.clientName} · {notif.date} {notif.time}</div>
+                <div className="flex gap-3 mt-2">
+                  <button onClick={() => { setNotif(null); nav('/dashboard/agenda'); }} className="text-xs text-gold font-semibold cursor-pointer hover:underline">Ver agenda →</button>
+                  <button onClick={() => setNotif(null)} className="text-xs text-text-muted cursor-pointer hover:text-text-secondary">Cerrar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Mobile bottom tab bar */}
         <nav className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[var(--sidebar-bg)] border-t border-border" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
