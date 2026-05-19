@@ -12,6 +12,14 @@ const DEFAULT_START = 7;
 const DEFAULT_END = 22;
 const DAY_LABELS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
+// Estados de cita con paleta visual consistente con StatusBadge.
+const STATUS_INFO = {
+  pending:   { label: 'Pendiente',  short: 'Pend.',  color: '#e0b265', dot: 'bg-gold',       pill: 'bg-gold/20 text-gold border-gold/40' },
+  confirmed: { label: 'Confirmada', short: 'Conf.',  color: '#6db86d', dot: 'bg-green-500',  pill: 'bg-green-500/15 text-green-400 border-green-500/40' },
+  completed: { label: 'Completada', short: 'Hecho', color: '#64a0d0', dot: 'bg-blue-400',   pill: 'bg-blue-500/15 text-blue-400 border-blue-500/40' },
+  cancelled: { label: 'Cancelada',  short: 'Canc.',  color: '#e87b7b', dot: 'bg-red-500',    pill: 'bg-red-500/15 text-red-400 border-red-500/40' },
+};
+
 // ── Helpers de fechas ─────────────────────────────────────────────────
 const pad = (n) => String(n).padStart(2, '0');
 const toISO = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
@@ -274,29 +282,44 @@ function EventBlock({ a, top, height, left, width, onClick, expanded }) {
   const color = a.staff?.color || 'var(--gold)';
   const clientName = a.clients?.name || (a.notes?.match(/Cliente web: ([^·]+)/) || [])[1]?.trim() || 'Cliente';
   const isShort = height < 40;
+  const isMedium = height >= 40 && height < 60;
+  const st = STATUS_INFO[a.status] || STATUS_INFO.pending;
+  const isCancelled = a.status === 'cancelled';
+  const isCompleted = a.status === 'completed';
   return (
     <button
       onClick={onClick}
+      aria-label={`${clientName} — ${st.label}`}
       style={{
         top, height, left, width,
         background: `linear-gradient(135deg, ${color}33 0%, ${color}1a 100%)`,
         borderLeftColor: color,
         boxShadow: `0 1px 3px ${color}26`,
       }}
-      className="absolute border border-border/60 border-l-[3px] rounded-lg px-2 py-1 text-left overflow-hidden cursor-pointer hover:brightness-125 hover:-translate-y-px motion-reduce:transform-none transition-all z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60"
+      className={`absolute border border-border/60 border-l-[3px] rounded-lg px-2 py-1 text-left overflow-hidden cursor-pointer hover:brightness-125 hover:-translate-y-px motion-reduce:transform-none transition-all z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 ${isCancelled ? 'opacity-55' : ''}`}
     >
       <div className="flex items-center justify-between gap-1">
-        <span className={`font-semibold truncate ${isShort ? 'text-[10px]' : 'text-xs'}`}>{clientName}</span>
-        {a.status === 'pending' && (
-          <span className="w-1.5 h-1.5 rounded-full bg-gold flex-shrink-0 animate-pulse motion-reduce:animate-none" aria-label="Pendiente" />
+        <span className={`font-semibold truncate ${isShort ? 'text-[10px]' : 'text-xs'} ${isCancelled ? 'line-through decoration-1' : ''}`}>
+          {clientName}
+        </span>
+        {isShort ? (
+          <span
+            className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${st.dot} ${a.status === 'pending' ? 'animate-pulse motion-reduce:animate-none' : ''}`}
+            aria-hidden="true"
+          />
+        ) : (
+          <span className={`text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded border whitespace-nowrap ${st.pill} flex-shrink-0`}>
+            {st.short}
+          </span>
         )}
       </div>
       {!isShort && (
-        <div className="text-[10px] text-text-secondary truncate mt-0.5">
+        <div className={`text-[10px] truncate mt-0.5 ${isCancelled ? 'text-text-muted' : 'text-text-secondary'}`}>
           {a.time?.slice(0, 5)} · {a.services?.name || 'Servicio'}
+          {isCompleted && <span className="ml-1">✓</span>}
         </div>
       )}
-      {expanded && height > 70 && a.staff?.name && (
+      {expanded && !isMedium && height > 70 && a.staff?.name && (
         <div className="text-[10px] font-semibold mt-1 truncate" style={{ color }}>{a.staff.name}</div>
       )}
     </button>
@@ -504,11 +527,14 @@ function MonthView({ anchor, appointments, onPickDay }) {
                 {visible.map(a => {
                   const color = a.staff?.color || 'var(--gold)';
                   const name = a.clients?.name || (a.notes?.match(/Cliente web: ([^·]+)/) || [])[1]?.trim() || 'Cliente';
+                  const st = STATUS_INFO[a.status] || STATUS_INFO.pending;
+                  const isCancelled = a.status === 'cancelled';
                   return (
                     <div key={a.id} style={{ background: `${color}1f`, borderLeftColor: color }}
-                      className="text-[10px] truncate rounded px-1.5 py-0.5 border-l-2">
-                      <span className="font-semibold text-text-primary">{a.time?.slice(0, 5)}</span>
-                      <span className="text-text-secondary"> · {name}</span>
+                      className={`text-[10px] rounded px-1.5 py-0.5 border-l-2 flex items-center gap-1 ${isCancelled ? 'opacity-55' : ''}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${st.dot}`} aria-hidden="true" />
+                      <span className={`font-semibold text-text-primary ${isCancelled ? 'line-through decoration-1' : ''}`}>{a.time?.slice(0, 5)}</span>
+                      <span className={`truncate ${isCancelled ? 'text-text-muted line-through decoration-1' : 'text-text-secondary'}`}> · {name}</span>
                     </div>
                   );
                 })}
