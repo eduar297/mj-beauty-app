@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Icon, Modal, Field, Input, Select, Btn, ListLoading, CAT_COLORS, CAT_ICONS, BeforeAfterPair, PhotoTile, Lightbox, photosToSlides } from '../components/ui.jsx';
-import { api_services, api_service_photos, api_appointments, api_settings } from '../lib/api';
-
-const TODAY = () => new Date().toISOString().slice(0, 10);
+import { Icon, Modal, Btn, ListLoading, CAT_COLORS, CAT_ICONS, BeforeAfterPair, PhotoTile, Lightbox, photosToSlides } from '../components/ui.jsx';
+import PublicBookingForm from '../components/PublicBookingForm.jsx';
+import { api_services, api_service_photos } from '../lib/api';
 
 export default function Services() {
   const { cat: paramCat } = useParams();
@@ -12,7 +11,6 @@ export default function Services() {
   const [activeCat, setActiveCat] = useState(paramCat || 'Uñas');
   const [services, setServices] = useState(null); // null = loading
   const [photosBy, setPhotosBy] = useState({}); // service_id → photos[]
-  const [settings, setSettings] = useState(null);
   const [bookingService, setBookingService] = useState(null);
   const [lightbox, setLightbox] = useState(null); // { slides, index }
   const fmt = n => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n);
@@ -24,7 +22,6 @@ export default function Services() {
       for (const p of (data || [])) (byService[p.service_id] ??= []).push(p);
       setPhotosBy(byService);
     });
-    api_settings.get().then(({ data }) => setSettings(data || {}));
   }, []);
 
   const openLightboxFor = (serviceId, photoId) => {
@@ -105,10 +102,9 @@ export default function Services() {
 
       <Modal open={bookingService !== null} onClose={() => setBookingService(null)} title="Reservar Cita">
         {bookingService !== null && (
-          <SimpleBooking
+          <PublicBookingForm
             defaultService={bookingService}
             services={services || []}
-            settings={settings}
             onClose={() => setBookingService(null)}
           />
         )}
@@ -151,75 +147,3 @@ function ServicePhotoStrip({ photos, onOpen }) {
   );
 }
 
-function SimpleBooking({ defaultService, services, settings, onClose }) {
-  const [form, setForm] = useState({ name: '', phone: '', service: defaultService || '', date: TODAY(), time: '' });
-  const [submitting, setSubmitting] = useState(false);
-  const [done, setDone] = useState(false);
-  const [err, setErr] = useState('');
-
-  const submit = async () => {
-    setErr('');
-    setSubmitting(true);
-    try {
-      const svc = services.find(s => s.name === form.service);
-      const res = await api_appointments.create({
-        service_id: svc?.id,
-        date: form.date,
-        time: form.time,
-        duration: svc?.duration || 60,
-        status: 'pending',
-        notes: `Cliente web: ${form.name} · ${form.phone}`,
-      });
-      if (res.error) throw res.error;
-      setDone(true);
-      // Si hay WhatsApp configurado, abre chat con mensaje pre-armado
-      if (settings?.whatsapp) {
-        const fmtDate = new Date(form.date + 'T00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'long' });
-        const msg = `Hola! Acabo de reservar una cita por la web.%0A%0A• Nombre: ${form.name}%0A• Teléfono: ${form.phone}%0A• Servicio: ${form.service}%0A• Fecha: ${fmtDate}%0A• Hora: ${form.time}%0A%0A¿Me la pueden confirmar?`;
-        window.open(`https://wa.me/${settings.whatsapp}?text=${msg}`, '_blank', 'noopener');
-      }
-    } catch (e) {
-      setErr(e.message || 'No se pudo reservar');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  if (done) return (
-    <div className="text-center py-4">
-      <div className="w-16 h-16 rounded-full bg-green-500/15 grid place-items-center mx-auto mb-4">
-        <Icon name="check" size={28} color="#6db86d" />
-      </div>
-      <h3 className="font-serif text-xl mb-2">¡Cita Reservada!</h3>
-      <p className="text-text-secondary text-sm mb-5">
-        {settings?.whatsapp ? 'Abrimos WhatsApp para que confirmes con el salón.' : 'Te contactaremos para confirmar.'}
-      </p>
-      <Btn onClick={onClose}>Cerrar</Btn>
-    </div>
-  );
-
-  return (
-    <>
-      <Field label="Nombre"><Input value={form.name} onChange={e => setForm({...form, name: e.target.value})} placeholder="Tu nombre" /></Field>
-      <Field label="Teléfono"><Input type="tel" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})} placeholder="+57 300 000 0000" /></Field>
-      <Field label="Servicio">
-        <Select value={form.service} onChange={e => setForm({...form, service: e.target.value})}
-          options={[{value:'',label:'Selecciona'}, ...services.map(s => ({value:s.name,label:s.name}))]} />
-      </Field>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Fecha"><Input type="date" value={form.date} onChange={e => setForm({...form, date: e.target.value})} /></Field>
-        <Field label="Hora"><Input type="time" value={form.time} onChange={e => setForm({...form, time: e.target.value})} /></Field>
-      </div>
-
-      {err && (
-        <div role="alert" className="text-red-400 text-sm bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 mb-3">
-          {err}
-        </div>
-      )}
-
-      <Btn onClick={submit} loading={submitting} disabled={!form.name || !form.service || !form.date || !form.time}>
-        {submitting ? 'Reservando…' : 'Confirmar'}
-      </Btn>
-    </>
-  );
-}

@@ -31,6 +31,8 @@ alter table staff drop constraint if exists staff_pin_key;
 alter table staff drop column if exists email;
 -- Migration: foto de perfil de empleadas.
 alter table staff add column if not exists photo_url text;
+-- Migration: horario semanal (jsonb { mon:{start,end}|null, tue:..., ... }).
+alter table staff add column if not exists weekly_hours jsonb default '{}'::jsonb;
 
 -- ───── Tabla: clients ───────────────────────────────────────────────
 create table if not exists clients (
@@ -48,6 +50,8 @@ create table if not exists clients (
 
 -- Migration: el correo de clientas ya no se usa.
 alter table clients drop column if exists email;
+-- Index para lookup público por teléfono en el booking.
+create index if not exists clients_phone_idx on clients(phone);
 
 -- ───── Tabla: services ──────────────────────────────────────────────
 create table if not exists services (
@@ -68,6 +72,12 @@ alter table services drop constraint if exists services_cat_check;
 alter table services add constraint services_cat_check
   check (cat in ('Uñas','Pedicura','Pelo','Faciales','Cejas','Pestañas'));
 
+-- Migration: rangos opcionales para duración y precio (e.g. "30-60 min", "$50k-$80k").
+-- duration y price siguen siendo los valores base (usados para la reserva real).
+-- *_max es opcional; si es null o ≤ base, el front muestra solo el valor base.
+alter table services add column if not exists duration_max int;
+alter table services add column if not exists price_max numeric(12,0);
+
 -- ───── Tabla: appointments ──────────────────────────────────────────
 create table if not exists appointments (
   id uuid primary key default uuid_generate_v4(),
@@ -81,6 +91,9 @@ create table if not exists appointments (
   notes text,
   created_at timestamptz default now()
 );
+
+-- Migration: preferencia opcional de empleada elegida por la clienta al reservar.
+alter table appointments add column if not exists preferred_staff_id uuid references staff(id) on delete set null;
 
 -- ───── Tabla: site_settings (personalización pública) ──────────────
 -- Fila única (id = 1). El admin edita estos campos desde el dashboard
@@ -123,7 +136,44 @@ create table if not exists transactions (
   created_at timestamptz default now()
 );
 
--- ───── Realtime: activar para appointments y transactions ───────────
+-- ───── Tabla: staff_services (relación N-N entre empleadas y servicios) ─
+create table if not exists staff_services (
+  staff_id   uuid not null references staff(id)    on delete cascade,
+  service_id uuid not null references services(id) on delete cascade,
+  primary key (staff_id, service_id)
+);
+create index if not exists staff_services_service_id_idx on staff_services(service_id);
+
+-- ───── Tabla: staff_time_off (bloqueos puntuales / vacaciones) ──────
+create table if not exists staff_time_off (
+  id uuid primary key default uuid_generate_v4(),
+  staff_id uuid not null references staff(id) on delete cascade,
+  start_at timestamptz not null,
+  end_at   timestamptz not null,
+  reason text,
+  created_at timestamptz default now(),
+  constraint staff_time_off_valid_range check (end_at > start_at)
+);
+create index if not exists staff_time_off_staff_idx on staff_time_off(staff_id, start_at);
+
+-- ───── Tabla: notifications (centro de notificaciones por empleada) ─
+create table if not exists notifications (
+  id uuid primary key default uuid_generate_v4(),
+  recipient_staff_id uuid not null references staff(id) on delete cascade,
+  type text not null check (type in ('appointment_pending','appointment_confirmed','appointment_cancelled')),
+  appointment_id uuid references appointments(id) on delete cascade,
+  title text not null,
+  body text,
+  read_at timestamptz,
+  created_at timestamptz default now()
+);
+create index if not exists notifications_recipient_unread_idx
+  on notifications(recipient_staff_id, created_at desc)
+  where read_at is null;
+create index if not exists notifications_recipient_all_idx
+  on notifications(recipient_staff_id, created_at desc);
+
+-- ───── Realtime: activar para appointments, transactions y notifications ─
 -- Idempotente: ignora el error si la tabla ya está en la publicación.
 do $$
 begin
@@ -134,6 +184,12 @@ end $$;
 do $$
 begin
   alter publication supabase_realtime add table transactions;
+exception when duplicate_object then null;
+end $$;
+
+do $$
+begin
+  alter publication supabase_realtime add table notifications;
 exception when duplicate_object then null;
 end $$;
 
@@ -181,6 +237,26 @@ drop policy if exists "appointments_anon_all" on appointments;
 create policy "appointments_anon_all" on appointments for all using (true);
 drop policy if exists "transactions_anon_all" on transactions;
 create policy "transactions_anon_all" on transactions for all using (true);
+
+-- RLS para las nuevas tablas (mismo modelo "anon_all" hasta que migremos a Supabase Auth)
+alter table staff_services enable row level security;
+alter table staff_time_off enable row level security;
+alter table notifications  enable row level security;
+
+drop policy if exists "staff_services_anon_all" on staff_services;
+create policy "staff_services_anon_all" on staff_services for all using (true);
+
+drop policy if exists "staff_time_off_anon_all" on staff_time_off;
+create policy "staff_time_off_anon_all" on staff_time_off for all using (true);
+
+-- Lectura pública limitada de staff_time_off (necesaria para que el booking
+-- público pueda computar slots disponibles). Toda la tabla; el riesgo es bajo
+-- porque solo contiene start/end/reason, sin PII.
+drop policy if exists "staff_time_off_public_read" on staff_time_off;
+create policy "staff_time_off_public_read" on staff_time_off for select using (true);
+
+drop policy if exists "notifications_anon_all" on notifications;
+create policy "notifications_anon_all" on notifications for all using (true);
 
 -- Storage: lectura pública del bucket services
 drop policy if exists "services_storage_public" on storage.objects;

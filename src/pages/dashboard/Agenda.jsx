@@ -563,6 +563,29 @@ function MonthView({ anchor, appointments, onPickDay }) {
   );
 }
 
+// Abre WhatsApp al teléfono de la clienta con un mensaje pre-armado de
+// confirmación o rechazo. Si no hay teléfono o WhatsApp no aplica, retorna
+// false para que el caller pueda mostrar un toast.
+function openWhatsAppConfirmation(appt, kind) {
+  const phone = (appt?.clients?.phone || '').replace(/\D/g, '');
+  if (!phone) return false;
+  const clientName = appt.clients?.name || 'cliente';
+  const svcName = appt.services?.name || 'tu servicio';
+  const dateLabel = appt.date
+    ? new Date(appt.date + 'T00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'long' })
+    : '';
+  const timeLabel = (appt.time || '').slice(0, 5);
+  const messages = {
+    confirmed:
+      `Hola ${clientName}! 💛 Tu cita para *${svcName}* el ${dateLabel} a las ${timeLabel} fue *confirmada*. Te esperamos en MJ Beauty.`,
+    cancelled:
+      `Hola ${clientName}, lamentamos informarte que tu cita para *${svcName}* el ${dateLabel} a las ${timeLabel} no pudo ser confirmada. ¿Quisieras agendar en otro horario? 💛`,
+  };
+  const msg = encodeURIComponent(messages[kind] || '');
+  window.open(`https://wa.me/${phone}?text=${msg}`, '_blank', 'noopener');
+  return true;
+}
+
 // ── Form de cita ──────────────────────────────────────────────────────
 function ApptForm({ initial, services, staff, clients, defaultDate, onSaved, onDelete }) {
   const [f, setF] = useState({
@@ -571,9 +594,32 @@ function ApptForm({ initial, services, staff, clients, defaultDate, onSaved, onD
     ...initial,
   });
   const [saving, setSaving] = useState(false);
+  const [deciding, setDeciding] = useState(false); // accept/reject inflight
   const [deleting, setDeleting] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const [err, setErr] = useState('');
+  const [info, setInfo] = useState('');
+
+  const isPending = initial?.id && initial.status === 'pending';
+  const hasPhone = !!initial?.clients?.phone;
+
+  const decide = async (kind) => {
+    setErr(''); setInfo('');
+    setDeciding(true);
+    try {
+      const newStatus = kind === 'accept' ? 'confirmed' : 'cancelled';
+      const res = await api_appointments.update(initial.id, { status: newStatus });
+      if (res.error) throw res.error;
+      // Abrir WhatsApp al número de la clienta (si tiene)
+      const opened = openWhatsAppConfirmation(initial, newStatus);
+      if (!opened) setInfo('Cliente sin teléfono — no se abrió WhatsApp.');
+      onSaved();
+    } catch (e) {
+      setErr(e.message || 'No se pudo actualizar la cita');
+    } finally {
+      setDeciding(false);
+    }
+  };
 
   const submit = async () => {
     setErr('');
@@ -608,6 +654,31 @@ function ApptForm({ initial, services, staff, clients, defaultDate, onSaved, onD
 
   return (
     <div>
+      {isPending && (
+        <div className="mb-4 bg-gold-dim border border-gold/40 rounded-2xl p-3.5">
+          <div className="flex items-center gap-2 mb-2.5">
+            <span className="w-2 h-2 rounded-full bg-gold animate-pulse motion-reduce:animate-none" />
+            <div className="text-xs font-semibold text-gold uppercase tracking-wider">Pendiente de aprobación</div>
+          </div>
+          <div className="text-[11px] text-text-secondary mb-3">
+            {hasPhone
+              ? 'Al aceptar o rechazar se abrirá WhatsApp para enviar la confirmación a la clienta.'
+              : 'Esta cita no tiene teléfono de cliente — el cambio se aplica sin abrir WhatsApp.'}
+          </div>
+          <div className="flex gap-2">
+            <Btn icon="check" onClick={() => decide('accept')} loading={deciding} disabled={deciding}>
+              Aceptar
+            </Btn>
+            <Btn variant="ghost" icon="close" onClick={() => decide('reject')} loading={deciding} disabled={deciding}>
+              Rechazar
+            </Btn>
+          </div>
+          {info && (
+            <div className="mt-2 text-[11px] text-text-muted">{info}</div>
+          )}
+        </div>
+      )}
+
       <Field label="Cliente">
         <Select value={f.client_id || ''} onChange={e => setF({ ...f, client_id: e.target.value })}
           options={[{ value: '', label: 'Selecciona' }, ...clients.map(c => ({ value: c.id, label: c.name }))]} />

@@ -1,8 +1,8 @@
 import { Routes, Route, NavLink, useNavigate } from 'react-router-dom';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth.jsx';
 import { Icon, Avatar } from '../components/ui.jsx';
-import { api_appointments } from '../lib/api';
+import { api_notifications } from '../lib/api';
 import Agenda from './dashboard/Agenda.jsx';
 import Clientes from './dashboard/Clientes.jsx';
 import Servicios from './dashboard/Servicios.jsx';
@@ -23,9 +23,12 @@ export default function Dashboard() {
   const { user, logout } = useAuth();
   const nav = useNavigate();
   const [drawer, setDrawer] = useState(false);
-  const [notif, setNotif] = useState(null); // { id, clientName, time, date }
-  const mountedAt = useRef(Date.now());
+  // Centro de notificaciones por empleada (cargadas + realtime).
+  const [notifs, setNotifs] = useState([]); // [{ id, type, title, body, read_at, ... }]
+  const [bellOpen, setBellOpen] = useState(false);
+  const [toast, setToast] = useState(null); // notif item that just arrived
   const allowed = TABS.filter(t => t.roles.includes(user?.role));
+  const unreadCount = notifs.filter(n => !n.read_at).length;
 
   useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
@@ -34,27 +37,45 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
-    const ch = api_appointments.subscribe((payload) => {
+    if (!user?.id) return;
+    let alive = true;
+    api_notifications.listForStaff(user.id, 20).then(({ data }) => {
+      if (alive) setNotifs(data || []);
+    });
+    const ch = api_notifications.subscribe(user.id, (payload) => {
       if (payload.eventType !== 'INSERT') return;
-      const a = payload.new;
-      if (!a || a.status !== 'pending') return;
-      // Ignora citas creadas antes del montaje (evita ruido al recargar)
-      if (a.created_at && new Date(a.created_at).getTime() < mountedAt.current) return;
-      const clientName = (a.notes?.match(/Cliente web: ([^·]+)/) || [])[1]?.trim() || 'Cliente';
-      const item = { id: a.id, clientName, time: a.time?.slice(0, 5) || '', date: a.date || '' };
-      setNotif(item);
+      const n = payload.new;
+      if (!n) return;
+      setNotifs(prev => [n, ...prev].slice(0, 50));
+      setToast(n);
       if ('Notification' in window && Notification.permission === 'granted') {
         try {
-          new Notification('MJ Beauty · Nueva cita pendiente', {
-            body: `${clientName} · ${item.date} ${item.time}`,
+          new Notification(`MJ Beauty · ${n.title}`, {
+            body: n.body || '',
             icon: '/assets/logo.jpeg',
           });
         } catch {}
       }
-      setTimeout(() => setNotif((cur) => (cur?.id === item.id ? null : cur)), 10000);
+      setTimeout(() => setToast(cur => (cur?.id === n.id ? null : cur)), 10000);
     });
-    return () => { ch?.unsubscribe?.(); };
-  }, []);
+    return () => { alive = false; ch?.unsubscribe?.(); };
+  }, [user?.id]);
+
+  const openNotification = async (n) => {
+    setBellOpen(false);
+    if (!n.read_at) {
+      await api_notifications.markRead(n.id);
+      setNotifs(prev => prev.map(x => x.id === n.id ? { ...x, read_at: new Date().toISOString() } : x));
+    }
+    nav('/dashboard/agenda');
+  };
+
+  const markAllRead = async () => {
+    if (!user?.id) return;
+    await api_notifications.markAllRead(user.id);
+    const now = new Date().toISOString();
+    setNotifs(prev => prev.map(n => n.read_at ? n : { ...n, read_at: now }));
+  };
 
   return (
     <div className="flex h-screen overflow-hidden bg-bg">
@@ -120,7 +141,52 @@ export default function Dashboard() {
             <button onClick={() => setDrawer(true)} className="md:hidden text-text-secondary p-1.5"><Icon name="menu" size={20} /></button>
             <div className="hidden sm:block text-xs text-text-muted">Hoy — <span className="text-text-secondary">{new Date().toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' })}</span></div>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 relative">
+            {/* Bell de notificaciones */}
+            <button onClick={() => setBellOpen(o => !o)}
+              aria-label={`Notificaciones${unreadCount > 0 ? ` (${unreadCount} sin leer)` : ''}`}
+              className="relative p-1.5 rounded-full hover:bg-bg-hover transition cursor-pointer">
+              <Icon name="bell" size={18} />
+              {unreadCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 grid place-items-center rounded-full bg-red-500 text-white text-[9px] font-bold">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </button>
+            {bellOpen && (
+              <>
+                <div className="fixed inset-0 z-30" onClick={() => setBellOpen(false)} />
+                <div role="menu" className="absolute right-0 top-full mt-2 w-80 bg-bg-elevated border border-border rounded-2xl shadow-2xl z-40 overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
+                    <div className="text-sm font-semibold">Notificaciones</div>
+                    {unreadCount > 0 && (
+                      <button onClick={markAllRead} className="text-[11px] text-gold hover:underline cursor-pointer">
+                        Marcar todas leídas
+                      </button>
+                    )}
+                  </div>
+                  <div className="max-h-96 overflow-y-auto">
+                    {notifs.length === 0 ? (
+                      <div className="text-center text-text-muted text-xs py-8">Sin notificaciones</div>
+                    ) : notifs.map(n => (
+                      <button key={n.id} onClick={() => openNotification(n)}
+                        className={`w-full text-left px-4 py-2.5 border-b border-border last:border-0 hover:bg-bg-hover transition cursor-pointer ${!n.read_at ? 'bg-gold/5' : ''}`}>
+                        <div className="flex items-start gap-2">
+                          {!n.read_at && <span className="w-1.5 h-1.5 rounded-full bg-gold mt-1.5 flex-shrink-0" />}
+                          <div className="flex-1 min-w-0">
+                            <div className={`text-xs ${!n.read_at ? 'font-semibold' : 'text-text-secondary'}`}>{n.title}</div>
+                            {n.body && <div className="text-[11px] text-text-muted truncate mt-0.5">{n.body}</div>}
+                            <div className="text-[10px] text-text-muted mt-0.5">
+                              {new Date(n.created_at).toLocaleString('es-CO', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            </div>
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-gold-dim border border-border-strong">
               <div className="w-1.5 h-1.5 rounded-full bg-gold" />
               <span className="text-[11px] text-gold font-semibold capitalize">{user?.role}</span>
@@ -142,18 +208,18 @@ export default function Dashboard() {
           </Routes>
         </main>
 
-        {notif && (
+        {toast && (
           <div role="status" aria-live="polite" className="fixed top-4 right-4 z-[300] bg-bg-elevated border-2 border-gold rounded-2xl shadow-2xl p-4 max-w-sm fade-up">
             <div className="flex items-start gap-3">
               <div className="w-9 h-9 rounded-lg grid place-items-center bg-gold-dim text-gold border border-border-strong flex-shrink-0">
                 <Icon name="bell" size={16} />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="font-semibold text-sm">Nueva cita pendiente</div>
-                <div className="text-xs text-text-muted mt-0.5 truncate">{notif.clientName} · {notif.date} {notif.time}</div>
+                <div className="font-semibold text-sm">{toast.title}</div>
+                {toast.body && <div className="text-xs text-text-muted mt-0.5 truncate">{toast.body}</div>}
                 <div className="flex gap-3 mt-2">
-                  <button onClick={() => { setNotif(null); nav('/dashboard/agenda'); }} className="text-xs text-gold font-semibold cursor-pointer hover:underline">Ver agenda →</button>
-                  <button onClick={() => setNotif(null)} className="text-xs text-text-muted cursor-pointer hover:text-text-secondary">Cerrar</button>
+                  <button onClick={() => { setToast(null); openNotification(toast); }} className="text-xs text-gold font-semibold cursor-pointer hover:underline">Ver agenda →</button>
+                  <button onClick={() => setToast(null)} className="text-xs text-text-muted cursor-pointer hover:text-text-secondary">Cerrar</button>
                 </div>
               </div>
             </div>

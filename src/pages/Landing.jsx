@@ -1,7 +1,8 @@
 import { useNavigate, Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Icon, Modal, Field, Input, Select, Btn, GoldDivider, BeforeAfterPair, PhotoTile, Lightbox, photosToSlides } from '../components/ui.jsx';
-import { api_appointments, api_services, api_service_photos, api_settings } from '../lib/api';
+import { Icon, Modal, GoldDivider, BeforeAfterPair, PhotoTile, Lightbox, photosToSlides } from '../components/ui.jsx';
+import PublicBookingForm from '../components/PublicBookingForm.jsx';
+import { api_service_photos, api_settings } from '../lib/api';
 
 export default function Landing() {
   const nav = useNavigate();
@@ -254,7 +255,7 @@ export default function Landing() {
       </footer>
 
       <Modal open={bookingOpen} onClose={() => setBookingOpen(false)} title="Reservar Cita">
-        <BookingForm onClose={() => setBookingOpen(false)} settings={settings} />
+        <PublicBookingForm onClose={() => setBookingOpen(false)} />
       </Modal>
 
       <Lightbox open={!!lightbox} onClose={() => setLightbox(null)} slides={lightbox?.slides || []} index={lightbox?.index || 0} />
@@ -311,91 +312,3 @@ function Row({ term, desc }) {
   );
 }
 
-function BookingForm({ onClose, defaultService, settings }) {
-  const today = new Date().toISOString().slice(0, 10);
-  const [form, setForm] = useState({ name: '', phone: '', service: defaultService || '', date: today, time: '' });
-  const [services, setServices] = useState(null); // null = loading
-  const [step, setStep] = useState(1);
-  const [done, setDone] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [err, setErr] = useState('');
-
-  useEffect(() => { api_services.listPublic().then(({ data }) => setServices(data || [])); }, []);
-
-  const submit = async () => {
-    setErr('');
-    setSubmitting(true);
-    try {
-      const svc = (services || []).find(x => x.name === form.service);
-      const res = await api_appointments.create({
-        service_id: svc?.id, date: form.date, time: form.time,
-        duration: svc?.duration || 60, status: 'pending',
-        notes: `Cliente web: ${form.name} · ${form.phone}`,
-      });
-      if (res.error) throw res.error;
-      setDone(true);
-      if (settings?.whatsapp) {
-        const fmtDate = new Date(form.date + 'T00:00').toLocaleDateString('es-CO', { day: 'numeric', month: 'long' });
-        const msg = `Hola! Acabo de reservar una cita por la web.%0A%0A• Nombre: ${form.name}%0A• Teléfono: ${form.phone}%0A• Servicio: ${form.service}%0A• Fecha: ${fmtDate}%0A• Hora: ${form.time}%0A%0A¿Me la pueden confirmar?`;
-        window.open(`https://wa.me/${settings.whatsapp}?text=${msg}`, '_blank', 'noopener');
-      }
-    } catch (e) {
-      setErr(e.message || 'No se pudo reservar');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  if (done) return (
-    <div className="text-center py-4">
-      <div className="w-16 h-16 rounded-full bg-green-500/15 grid place-items-center mx-auto mb-4">
-        <Icon name="check" size={28} color="#6db86d" />
-      </div>
-      <h3 className="font-serif text-xl mb-2">¡Cita Reservada!</h3>
-      <p className="text-text-secondary text-sm mb-5">
-        {settings?.whatsapp ? 'Abrimos WhatsApp para que confirmes con el salón.' : 'Te contactaremos para confirmar.'}
-      </p>
-      <Btn onClick={onClose}>Cerrar</Btn>
-    </div>
-  );
-
-  const canContinue = form.name && form.service;
-  const canConfirm = form.date && form.time && !submitting;
-
-  return (
-    <div>
-      <div className="flex gap-2 mb-5" aria-label={`Paso ${step} de 2`}>
-        {[1, 2].map(n => <div key={n} className={`flex-1 h-1 rounded ${n <= step ? 'bg-gold' : 'bg-border'}`} />)}
-      </div>
-      {step === 1 ? (
-        <>
-          <Field label="Nombre completo"><Input value={form.name}    onChange={e => setForm({...form, name: e.target.value})}    placeholder="Tu nombre" /></Field>
-          <Field label="Teléfono">       <Input value={form.phone}   onChange={e => setForm({...form, phone: e.target.value})}   placeholder="+57 300 000 0000" type="tel" /></Field>
-          <Field label="Servicio">
-            <Select value={form.service} onChange={e => setForm({...form, service: e.target.value})}
-              options={services === null
-                ? [{ value: '', label: 'Cargando servicios…' }]
-                : [{ value: '', label: 'Selecciona un servicio' }, ...services.map(x => ({ value: x.name, label: x.name }))]} />
-          </Field>
-          <Btn onClick={() => canContinue && setStep(2)} disabled={!canContinue}>Continuar →</Btn>
-        </>
-      ) : (
-        <>
-          <Field label="Fecha"><Input type="date" value={form.date} onChange={e => setForm({...form, date: e.target.value})} /></Field>
-          <Field label="Hora"> <Input type="time" value={form.time} onChange={e => setForm({...form, time: e.target.value})} /></Field>
-
-          {err && (
-            <div role="alert" className="text-red-400 text-sm bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 mb-3">
-              {err}
-            </div>
-          )}
-
-          <div className="flex gap-2.5">
-            <Btn variant="ghost" onClick={() => setStep(1)} disabled={submitting}>← Atrás</Btn>
-            <Btn onClick={submit} loading={submitting} disabled={!form.date || !form.time}>{submitting ? 'Reservando…' : 'Confirmar Cita'}</Btn>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}

@@ -102,6 +102,8 @@ function ServiceForm({ initial, onSaved, onDelete }) {
         ...f,
         duration: Number(f.duration) || 60,
         price: Number(f.price) || 0,
+        duration_max: f.duration_max === '' || f.duration_max == null ? null : Number(f.duration_max),
+        price_max: f.price_max === '' || f.price_max == null ? null : Number(f.price_max),
       };
       delete data.created_at;
       const res = f.id ? await api_services.update(f.id, data) : await api_services.create(data);
@@ -142,8 +144,29 @@ function ServiceForm({ initial, onSaved, onDelete }) {
           className="w-full bg-bg-card border border-border rounded-lg px-3 py-2.5 text-sm outline-none focus:border-gold resize-y" />
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Duración (min)"><Input type="number" value={f.duration ?? ''} onChange={e=>setF({...f, duration: e.target.value === '' ? '' : Number(e.target.value)})} /></Field>
-        <Field label="Precio (COP)"><Input type="number" value={f.price ?? ''} onChange={e=>setF({...f, price: e.target.value === '' ? '' : Number(e.target.value)})} /></Field>
+        <Field label="Duración mín (min)">
+          <Input type="number" value={f.duration ?? ''}
+            onChange={e=>setF({...f, duration: e.target.value === '' ? '' : Number(e.target.value)})} />
+        </Field>
+        <Field label="Duración máx (opcional)">
+          <Input type="number" value={f.duration_max ?? ''}
+            onChange={e=>setF({...f, duration_max: e.target.value === '' ? '' : Number(e.target.value)})}
+            placeholder="Deja vacío si es fijo" />
+        </Field>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Precio mín (COP)">
+          <Input type="number" value={f.price ?? ''}
+            onChange={e=>setF({...f, price: e.target.value === '' ? '' : Number(e.target.value)})} />
+        </Field>
+        <Field label="Precio máx (opcional)">
+          <Input type="number" value={f.price_max ?? ''}
+            onChange={e=>setF({...f, price_max: e.target.value === '' ? '' : Number(e.target.value)})}
+            placeholder="Deja vacío si es fijo" />
+        </Field>
+      </div>
+      <div className="text-[11px] text-text-muted -mt-2 mb-3">
+        Si llenas los campos "máx", se mostrará un rango (ej: "30–60 min", "$50k–$80k"). La duración mín es la que se usa para reservar.
       </div>
       <label className="flex items-center gap-2.5 mb-5 cursor-pointer">
         <input type="checkbox" checked={!!f.popular} onChange={e=>setF({...f, popular:e.target.checked})} className="w-4 h-4 accent-gold" />

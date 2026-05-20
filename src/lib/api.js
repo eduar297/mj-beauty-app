@@ -34,11 +34,49 @@ export const api_staff = {
 };
 
 // ─── CLIENTS ─────────────────────────────────────────────────────────
+// Normaliza el teléfono para comparaciones consistentes (acepta tipeo libre).
+const normalizePhone = (p) => (p || '').replace(/[\s\-().]/g, '').trim();
+
 export const api_clients = {
   list: () => supabase.from('clients').select('*').order('name'),
   create: (data) => supabase.from('clients').insert(data).select().single(),
   update: (id, data) => supabase.from('clients').update(data).eq('id', id).select().single(),
   remove: (id) => supabase.from('clients').delete().eq('id', id),
+
+  // Lookup público — solo expone id+name (privacidad: el teléfono lo tipea cualquiera).
+  findByPhone: async (phone) => {
+    const p = normalizePhone(phone);
+    if (!p || p.length < 6) return { data: null };
+    const { data, error } = await supabase
+      .from('clients')
+      .select('id, name, status')
+      .eq('phone', p)
+      .maybeSingle();
+    if (error) return { data: null, error };
+    return { data };
+  },
+
+  // Idempotente: por teléfono. Devuelve { id, isNew } para que el caller pueda
+  // mostrar "Quedaste registrada" cuando aplique.
+  upsertByPhone: async ({ phone, name }) => {
+    const p = normalizePhone(phone);
+    if (!p) throw new Error('Teléfono requerido');
+    const cleanName = (name || '').trim();
+    const { data: existing } = await supabase
+      .from('clients').select('id, name').eq('phone', p).maybeSingle();
+    if (existing) {
+      if (cleanName && cleanName !== existing.name) {
+        await supabase.from('clients').update({ name: cleanName }).eq('id', existing.id);
+      }
+      return { id: existing.id, isNew: false };
+    }
+    const { data: created, error } = await supabase
+      .from('clients')
+      .insert({ name: cleanName || 'Clienta', phone: p, status: 'new' })
+      .select('id').single();
+    if (error) throw error;
+    return { id: created.id, isNew: true };
+  },
 };
 
 // ─── SERVICES ────────────────────────────────────────────────────────
@@ -104,11 +142,53 @@ export const api_service_photos = {
 };
 
 // ─── APPOINTMENTS ────────────────────────────────────────────────────
+// Recolecta destinatarios para una notificación de cita:
+// siempre todas las admins activas + la empleada asignada (si existe y no es admin).
+const _collectAppointmentRecipients = async (staffId) => {
+  const { data: admins } = await supabase
+    .from('staff').select('id').eq('role', 'admin').eq('active', true);
+  const set = new Set((admins || []).map(a => a.id));
+  if (staffId) set.add(staffId);
+  return Array.from(set);
+};
+
+const _fetchApptWithRefs = async (id) => {
+  const { data } = await supabase
+    .from('appointments')
+    .select('id, date, time, status, staff_id, clients(name), services(name)')
+    .eq('id', id).maybeSingle();
+  return data;
+};
+
+const _notifyAppointment = async (apptId, type, overrideStaffId = null) => {
+  const appt = await _fetchApptWithRefs(apptId);
+  if (!appt) return;
+  const recipients = await _collectAppointmentRecipients(overrideStaffId ?? appt.staff_id);
+  if (recipients.length === 0) return;
+  const clientName = appt.clients?.name || 'Clienta';
+  const svcName = appt.services?.name || 'servicio';
+  const fmtDate = appt.date;
+  const fmtTime = (appt.time || '').slice(0, 5);
+  const titles = {
+    appointment_pending:   'Nueva cita pendiente',
+    appointment_confirmed: 'Cita confirmada',
+    appointment_cancelled: 'Cita cancelada',
+  };
+  const rows = recipients.map(rid => ({
+    recipient_staff_id: rid,
+    type,
+    appointment_id: appt.id,
+    title: titles[type] || 'Cita',
+    body: `${clientName} · ${svcName} · ${fmtDate} ${fmtTime}`,
+  }));
+  await supabase.from('notifications').insert(rows);
+};
+
 export const api_appointments = {
   // list('2026-05-18')                 → un solo día (compat anterior)
   // list({ from: '..', to: '..' })     → rango inclusivo (semana / mes)
   list: (arg) => {
-    let q = supabase.from('appointments').select('*, clients(name), staff(name,color), services(name,cat)');
+    let q = supabase.from('appointments').select('*, clients(name,phone), staff(name,color), services(name,cat,duration)');
     if (typeof arg === 'string') q = q.eq('date', arg);
     else if (arg && typeof arg === 'object') {
       if (arg.from) q = q.gte('date', arg.from);
@@ -116,8 +196,39 @@ export const api_appointments = {
     }
     return q.order('date').order('time');
   },
-  create: (data) => supabase.from('appointments').insert(data).select().single(),
-  update: (id, data) => supabase.from('appointments').update(data).eq('id', id).select().single(),
+  // Listado mínimo para computar slots públicos (solo lo necesario para
+  // detectar conflictos: staff_id, date, time, duration, status).
+  listForAvailability: ({ from, to }) =>
+    supabase.from('appointments').select('staff_id, date, time, duration, status')
+      .gte('date', from).lte('date', to),
+
+  create: async (data) => {
+    const res = await supabase.from('appointments').insert(data).select().single();
+    if (!res.error && res.data) {
+      // Solo notificamos cuando es pendiente (booking público o admin marca pending).
+      if (res.data.status === 'pending') {
+        try { await _notifyAppointment(res.data.id, 'appointment_pending'); } catch {}
+      }
+    }
+    return res;
+  },
+
+  update: async (id, data) => {
+    // Capturar el estado previo para detectar transiciones.
+    const { data: before } = await supabase
+      .from('appointments').select('status, staff_id').eq('id', id).maybeSingle();
+    const res = await supabase.from('appointments').update(data).eq('id', id).select().single();
+    if (!res.error && res.data && before) {
+      if (before.status !== res.data.status) {
+        if (res.data.status === 'confirmed') {
+          try { await _notifyAppointment(id, 'appointment_confirmed'); } catch {}
+        } else if (res.data.status === 'cancelled') {
+          try { await _notifyAppointment(id, 'appointment_cancelled'); } catch {}
+        }
+      }
+    }
+    return res;
+  },
   remove: (id) => supabase.from('appointments').delete().eq('id', id),
   // Realtime — cada llamada crea su propio canal para permitir varios suscriptores.
   subscribe: (callback) => {
@@ -153,6 +264,79 @@ export const api_transactions = {
     return supabase
       .channel(name)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, callback)
+      .subscribe();
+  },
+};
+
+// ─── STAFF ↔ SERVICES (qué servicios hace cada empleada) ────────────
+export const api_staff_services = {
+  byStaff: (staffId) =>
+    supabase.from('staff_services').select('service_id').eq('staff_id', staffId),
+  byService: (serviceId) =>
+    supabase.from('staff_services').select('staff_id').eq('service_id', serviceId),
+  // Set canónico: borra los que sobran, inserta los nuevos. Idempotente.
+  set: async (staffId, serviceIds) => {
+    const current = await supabase
+      .from('staff_services').select('service_id').eq('staff_id', staffId);
+    const currentIds = new Set((current.data || []).map(r => r.service_id));
+    const wantIds = new Set(serviceIds || []);
+    const toRemove = [...currentIds].filter(id => !wantIds.has(id));
+    const toAdd    = [...wantIds].filter(id => !currentIds.has(id));
+    if (toRemove.length) {
+      await supabase.from('staff_services').delete()
+        .eq('staff_id', staffId).in('service_id', toRemove);
+    }
+    if (toAdd.length) {
+      await supabase.from('staff_services')
+        .insert(toAdd.map(sid => ({ staff_id: staffId, service_id: sid })));
+    }
+    return { ok: true };
+  },
+};
+
+// ─── STAFF TIME OFF (bloqueos / vacaciones) ─────────────────────────
+export const api_time_off = {
+  byStaff: (staffId, fromIso = null) => {
+    let q = supabase.from('staff_time_off').select('*').eq('staff_id', staffId);
+    if (fromIso) q = q.gte('end_at', fromIso);
+    return q.order('start_at');
+  },
+  byDateRange: (fromIso, toIso) =>
+    supabase.from('staff_time_off').select('id, staff_id, start_at, end_at')
+      .lte('start_at', toIso).gte('end_at', fromIso),
+  create: (data) => supabase.from('staff_time_off').insert(data).select().single(),
+  remove: (id) => supabase.from('staff_time_off').delete().eq('id', id),
+};
+
+// ─── NOTIFICATIONS (centro por empleada con realtime) ───────────────
+export const api_notifications = {
+  listForStaff: (staffId, limit = 20) =>
+    supabase.from('notifications').select('*')
+      .eq('recipient_staff_id', staffId)
+      .order('created_at', { ascending: false })
+      .limit(limit),
+  unreadCount: (staffId) =>
+    supabase.from('notifications').select('id', { count: 'exact', head: true })
+      .eq('recipient_staff_id', staffId).is('read_at', null),
+  markRead: (id) =>
+    supabase.from('notifications').update({ read_at: new Date().toISOString() }).eq('id', id),
+  markAllRead: (staffId) =>
+    supabase.from('notifications').update({ read_at: new Date().toISOString() })
+      .eq('recipient_staff_id', staffId).is('read_at', null),
+  subscribe: (staffId, callback) => {
+    const name = `notifications_${staffId}_${Math.random().toString(36).slice(2, 9)}`;
+    return supabase
+      .channel(name)
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'notifications',
+          filter: `recipient_staff_id=eq.${staffId}`,
+        },
+        callback,
+      )
       .subscribe();
   },
 };
