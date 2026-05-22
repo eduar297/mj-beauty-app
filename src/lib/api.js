@@ -99,11 +99,27 @@ export const api_clients = {
 
 // ─── SERVICES ────────────────────────────────────────────────────────
 export const api_services = {
-  list: () => supabase.from('services').select('*').eq('active', true).order('cat'),
-  listPublic: () => supabase.from('services').select('*').eq('active', true).order('cat'),
+  // Orden: por categoría → orden manual (sort_order) → nombre (estable cuando
+  // varios servicios tienen el mismo sort_order, p.ej. recién creados).
+  list: () =>
+    supabase.from('services').select('*').eq('active', true)
+      .order('cat').order('sort_order').order('name'),
+  listPublic: () =>
+    supabase.from('services').select('*').eq('active', true)
+      .order('cat').order('sort_order').order('name'),
   create: (data) => supabase.from('services').insert(data).select().single(),
   update: (id, data) => supabase.from('services').update(data).eq('id', id).select().single(),
   remove: (id) => supabase.from('services').update({ active: false }).eq('id', id),
+  // Reordena un set de servicios. Recibe los IDs en el orden deseado; asigna
+  // sort_order = i a cada uno. Solo se hace para los IDs pasados (típico:
+  // todos los servicios de una categoría), así no toca otras categorías.
+  reorder: async (orderedIds) => {
+    // updates secuenciales — la tabla es pequeña (decenas de servicios).
+    for (let i = 0; i < orderedIds.length; i++) {
+      await supabase.from('services').update({ sort_order: i }).eq('id', orderedIds[i]);
+    }
+    return { ok: true };
+  },
   uploadPhoto: async (file, name, serviceId) => {
     // Fotos de servicio: se ven a ~340×190 en cards y ~512×288 en detalle.
     // 1600px wide es suficiente con margen para hi-DPI. WebP recorta peso ~25-30%.

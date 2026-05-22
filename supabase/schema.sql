@@ -78,6 +78,12 @@ alter table services add constraint services_cat_check
 alter table services add column if not exists duration_max int;
 alter table services add column if not exists price_max numeric(12,0);
 
+-- Migration: orden manual para drag-and-drop dentro del dashboard.
+-- El front lista por (cat, sort_order, name). Inicialmente todos los servicios
+-- comparten sort_order=0, pero el admin puede reordenar.
+alter table services add column if not exists sort_order int default 0;
+create index if not exists services_sort_idx on services(cat, sort_order);
+
 -- ───── Tabla: appointments ──────────────────────────────────────────
 create table if not exists appointments (
   id uuid primary key default uuid_generate_v4(),

@@ -3,6 +3,15 @@ import { Header } from '../Dashboard.jsx';
 import { Icon, Btn, Modal, Field, Input, Select, ListLoading, Spinner, CAT_COLORS, CAT_ICONS, BeforeAfterPair, PhotoTile } from '../../components/ui.jsx';
 import PhotoCropEditor, { ASPECT_LANDING_CARD } from '../../components/PhotoCropEditor.jsx';
 import { api_services, api_service_photos } from '../../lib/api';
+import {
+  DndContext, PointerSensor, TouchSensor, KeyboardSensor,
+  useSensor, useSensors, closestCenter,
+} from '@dnd-kit/core';
+import {
+  SortableContext, arrayMove, rectSortingStrategy,
+  useSortable, sortableKeyboardCoordinates,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 const CATS = ['Uñas','Pedicura','Pelo','Faciales','Cejas','Pestañas'];
 
@@ -10,6 +19,7 @@ export default function Servicios() {
   const [list, setList] = useState(null); // null = loading
   const [activeCat, setActiveCat] = useState('Uñas');
   const [editing, setEditing] = useState(null);
+  const [reorderMode, setReorderMode] = useState(false);
   const fmt = n => new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 }).format(n||0);
 
   const load = async () => {
@@ -20,10 +30,50 @@ export default function Servicios() {
 
   const filtered = (list || []).filter(s => s.cat === activeCat);
 
+  // Sensores: pointer (mouse) requiere desplazamiento mínimo para no romper
+  // los taps; touch requiere mantener presionado 200ms para distinguir scroll.
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleDragEnd = async (event) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = filtered.findIndex(s => s.id === active.id);
+    const newIndex = filtered.findIndex(s => s.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    // Reordenar localmente para feedback inmediato
+    const newOrderForCat = arrayMove(filtered, oldIndex, newIndex);
+    // Aplicar al estado global manteniendo el resto de categorías intactas
+    setList(prev => {
+      const others = (prev || []).filter(s => s.cat !== activeCat);
+      // Reasignar sort_order localmente para que coincida con la BD
+      const updated = newOrderForCat.map((s, i) => ({ ...s, sort_order: i }));
+      return [...others, ...updated];
+    });
+    // Persistir en background
+    try { await api_services.reorder(newOrderForCat.map(s => s.id)); }
+    catch (e) { console.error('Error al reordenar:', e); load(); /* re-sync */ }
+  };
+
   return (
     <div>
       <Header title="Catálogo de Servicios" subtitle="Precios y duración"
-        action={<Btn icon="plus" onClick={() => setEditing({ cat: activeCat, name:'', duration:60, price:0, popular:false, description:'' })}>Nuevo</Btn>} />
+        action={
+          <div className="flex gap-2">
+            <button onClick={() => setReorderMode(m => !m)}
+              className={`px-3 py-2 rounded-lg border text-xs font-semibold cursor-pointer transition ${
+                reorderMode
+                  ? 'bg-gold text-[#0d0c0a] border-gold'
+                  : 'bg-bg-card border-border-strong text-text-secondary hover:border-gold hover:text-gold'
+              }`}>
+              {reorderMode ? 'Listo' : 'Reordenar'}
+            </button>
+            <Btn icon="plus" onClick={() => setEditing({ cat: activeCat, name:'', duration:60, price:0, popular:false, description:'' })}>Nuevo</Btn>
+          </div>
+        } />
 
       <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
         {CATS.map(c => {
@@ -40,28 +90,27 @@ export default function Servicios() {
         })}
       </div>
 
+      {reorderMode && (
+        <div className="mb-3 text-xs text-text-muted bg-gold/10 border border-gold/30 rounded-lg px-3 py-2">
+          Modo reordenar activo — arrastra las tarjetas para cambiar el orden. Los cambios se guardan automáticamente.
+        </div>
+      )}
+
       {list === null ? (
         <ListLoading label="Cargando servicios…" />
       ) : (
-        <div className="grid gap-3.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
-          {filtered.map(s => (
-            <div key={s.id} className="bg-bg-card border border-border rounded-2xl overflow-hidden cursor-pointer hover:-translate-y-0.5 motion-reduce:transform-none transition" onClick={() => setEditing({...s})}>
-              <div className="h-24 bg-bg-elevated relative">
-                {s.photo_url && <img src={s.photo_url} alt="" loading="lazy" className="w-full h-full object-cover" />}
-                {s.popular && <div style={{ background: CAT_COLORS[s.cat]+'cc' }} className="absolute top-2 left-2 text-[9px] font-bold text-[#0d0c0a] px-2 py-0.5 rounded-full uppercase">Popular</div>}
-              </div>
-              <div className="p-3.5">
-                <div className="font-semibold text-sm mb-1">{s.name}</div>
-                <p className="text-[11px] text-text-muted line-clamp-2 mb-2.5">{s.description}</p>
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-text-muted flex items-center gap-1"><Icon name="clock" size={12} /> {s.duration} min</span>
-                  <span className="font-serif font-bold" style={{ color: CAT_COLORS[s.cat] }}>{fmt(s.price)}</span>
-                </div>
-              </div>
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+          <SortableContext items={filtered.map(s => s.id)} strategy={rectSortingStrategy}>
+            <div className="grid gap-3.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
+              {filtered.map(s => (
+                <SortableServiceCard key={s.id} service={s} fmt={fmt}
+                  reorderMode={reorderMode}
+                  onClick={() => !reorderMode && setEditing({ ...s })} />
+              ))}
+              {filtered.length === 0 && <div className="col-span-full text-center text-text-muted py-10 text-sm">Sin servicios en {activeCat}</div>}
             </div>
-          ))}
-          {filtered.length === 0 && <div className="col-span-full text-center text-text-muted py-10 text-sm">Sin servicios en {activeCat}</div>}
-        </div>
+          </SortableContext>
+        </DndContext>
       )}
 
       {editing && (
@@ -73,6 +122,49 @@ export default function Servicios() {
           />
         </Modal>
       )}
+    </div>
+  );
+}
+
+// Tarjeta de servicio sortable. En modo normal el click abre el editor;
+// en modo reordenar muestra una manija y el drag mueve la tarjeta.
+function SortableServiceCard({ service: s, fmt, reorderMode, onClick }) {
+  const {
+    attributes, listeners, setNodeRef, transform, transition, isDragging,
+  } = useSortable({ id: s.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    zIndex: isDragging ? 50 : 'auto',
+  };
+  // En modo reordenar todo el card es la manija; sin modo, solo abre el editor.
+  return (
+    <div ref={setNodeRef} style={style}
+      {...(reorderMode ? { ...attributes, ...listeners } : {})}
+      onClick={!reorderMode ? onClick : undefined}
+      className={`bg-bg-card border rounded-2xl overflow-hidden transition relative ${
+        reorderMode
+          ? 'border-gold/40 cursor-grab active:cursor-grabbing touch-none select-none ring-2 ring-gold/20'
+          : 'border-border cursor-pointer hover:-translate-y-0.5 motion-reduce:transform-none'
+      } ${isDragging ? 'shadow-2xl' : ''}`}>
+      {reorderMode && (
+        <div className="absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-gold text-[#0d0c0a] grid place-items-center shadow-md pointer-events-none">
+          <Icon name="menu" size={14} />
+        </div>
+      )}
+      <div className="h-24 bg-bg-elevated relative">
+        {s.photo_url && <img src={s.photo_url} alt="" loading="lazy" draggable={false} className="w-full h-full object-cover" />}
+        {s.popular && <div style={{ background: CAT_COLORS[s.cat] + 'cc' }} className="absolute top-2 left-2 text-[9px] font-bold text-[#0d0c0a] px-2 py-0.5 rounded-full uppercase">Popular</div>}
+      </div>
+      <div className="p-3.5">
+        <div className="font-semibold text-sm mb-1">{s.name}</div>
+        <p className="text-[11px] text-text-muted line-clamp-2 mb-2.5">{s.description}</p>
+        <div className="flex justify-between items-center">
+          <span className="text-xs text-text-muted flex items-center gap-1"><Icon name="clock" size={12} /> {s.duration} min</span>
+          <span className="font-serif font-bold" style={{ color: CAT_COLORS[s.cat] }}>{fmt(s.price)}</span>
+        </div>
+      </div>
     </div>
   );
 }
