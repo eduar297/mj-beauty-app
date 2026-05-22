@@ -170,46 +170,64 @@ export default function Agenda() {
         title="Agenda"
         subtitle={title}
         action={
-          <div className="flex gap-2 items-center flex-wrap">
-            <ViewSwitcher view={view} onChange={setView} />
-            <button onClick={goToday} disabled={isViewingToday}
-              className="px-3 py-1.5 rounded-lg border border-border-strong bg-bg-card text-xs font-semibold cursor-pointer disabled:opacity-40 hover:border-gold hover:text-gold transition-colors">
-              Hoy
-            </button>
-            <div className="flex rounded-lg border border-border-strong bg-bg-card overflow-hidden">
-              <button onClick={() => shift(-1)} aria-label="Anterior" className="px-2.5 py-2 cursor-pointer hover:bg-bg-hover hover:text-gold transition-colors"><Icon name="chevronLeft" size={14} /></button>
-              <button onClick={() => shift(1)}  aria-label="Siguiente" className="px-2.5 py-2 cursor-pointer hover:bg-bg-hover hover:text-gold transition-colors border-l border-border"><Icon name="chevronRight" size={14} /></button>
-            </div>
-            <Btn icon="plus" onClick={() => setEditing({ date: toISO(anchor) })}>Nueva</Btn>
-          </div>
+          <Btn icon="plus" onClick={() => setEditing({ date: toISO(anchor) })}>Nueva</Btn>
         }
       />
 
-      {/* Filtro por empleada (solo admin) + badge de pendientes */}
-      {isAdmin && staff.length > 0 && (
-        <div className="flex items-center gap-2 mb-3 flex-wrap">
-          <span className="text-[11px] text-text-muted uppercase tracking-widest">Empleada:</span>
-          <button onClick={() => setStaffFilter('')}
-            className={`text-xs px-2.5 py-1 rounded-full border cursor-pointer transition ${
-              staffFilter === '' ? 'bg-gold text-[#0d0c0a] border-gold font-semibold' : 'bg-bg-card border-border text-text-muted hover:text-text-secondary hover:border-border-strong'
-            }`}>
-            Todas
+      {/*
+        Controles unificados: navegación + vista. En mobile son una sola fila
+        densa (no wrap), con targets táctiles ≥40px. En desktop separamos
+        navegación a la izquierda y switcher a la derecha.
+      */}
+      <div className="flex items-center gap-2 mb-3">
+        <div className="flex rounded-lg border border-border-strong bg-bg-card overflow-hidden flex-shrink-0">
+          <button onClick={() => shift(-1)} aria-label="Anterior"
+            className="px-3 py-2 cursor-pointer hover:bg-bg-hover hover:text-gold transition-colors">
+            <Icon name="chevronLeft" size={16} />
           </button>
-          {staff.map(s => (
-            <button key={s.id} onClick={() => setStaffFilter(s.id)}
-              style={staffFilter === s.id ? { background: s.color, borderColor: s.color, color: '#0d0c0a' } : {}}
-              className={`text-xs px-2.5 py-1 rounded-full border cursor-pointer transition flex items-center gap-1.5 ${
-                staffFilter === s.id ? 'font-semibold' : 'bg-bg-card border-border text-text-muted hover:text-text-secondary hover:border-border-strong'
+          <button onClick={() => shift(1)} aria-label="Siguiente"
+            className="px-3 py-2 cursor-pointer hover:bg-bg-hover hover:text-gold transition-colors border-l border-border">
+            <Icon name="chevronRight" size={16} />
+          </button>
+        </div>
+        <button onClick={goToday} disabled={isViewingToday}
+          className="px-3 py-2 rounded-lg border border-border-strong bg-bg-card text-xs font-semibold cursor-pointer disabled:opacity-40 hover:border-gold hover:text-gold transition-colors flex-shrink-0">
+          Hoy
+        </button>
+        <div className="flex-1 min-w-0" />
+        <ViewSwitcher view={view} onChange={setView} />
+      </div>
+
+      {/* Filtro por empleada (solo admin) + badge de pendientes
+          En mobile: scroll horizontal sin wrap para mantener una sola fila
+          legible. En desktop: wrap normal con badge a la derecha. */}
+      {isAdmin && staff.length > 0 && (
+        <div className="-mx-4 sm:mx-0 mb-3">
+          <div className="flex items-center gap-2 overflow-x-auto sm:overflow-visible sm:flex-wrap px-4 sm:px-0 pb-1 sm:pb-0
+                          [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <span className="hidden sm:inline text-[11px] text-text-muted uppercase tracking-widest flex-shrink-0">Empleada:</span>
+            <button onClick={() => setStaffFilter('')}
+              className={`flex-shrink-0 text-xs px-3 py-1.5 rounded-full border cursor-pointer transition whitespace-nowrap ${
+                staffFilter === '' ? 'bg-gold text-[#0d0c0a] border-gold font-semibold' : 'bg-bg-card border-border text-text-muted hover:text-text-secondary hover:border-border-strong'
               }`}>
-              <span className="w-1.5 h-1.5 rounded-full" style={{ background: staffFilter === s.id ? '#0d0c0a' : s.color }} />
-              {s.name}
+              Todas
             </button>
-          ))}
-          {pendingCount > 0 && (
-            <span className="ml-auto text-[11px] px-2 py-1 rounded-full bg-gold/15 text-gold border border-gold/40">
-              {pendingCount} pendiente{pendingCount === 1 ? '' : 's'}
-            </span>
-          )}
+            {staff.map(s => (
+              <button key={s.id} onClick={() => setStaffFilter(s.id)}
+                style={staffFilter === s.id ? { background: s.color, borderColor: s.color, color: '#0d0c0a' } : {}}
+                className={`flex-shrink-0 text-xs px-3 py-1.5 rounded-full border cursor-pointer transition flex items-center gap-1.5 whitespace-nowrap ${
+                  staffFilter === s.id ? 'font-semibold' : 'bg-bg-card border-border text-text-muted hover:text-text-secondary hover:border-border-strong'
+                }`}>
+                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: staffFilter === s.id ? '#0d0c0a' : s.color }} />
+                {s.name}
+              </button>
+            ))}
+            {pendingCount > 0 && (
+              <span className="flex-shrink-0 sm:ml-auto text-[11px] px-2.5 py-1.5 rounded-full bg-gold/15 text-gold border border-gold/40 whitespace-nowrap font-semibold">
+                {pendingCount} pendiente{pendingCount === 1 ? '' : 's'}
+              </span>
+            )}
+          </div>
         </div>
       )}
 
@@ -241,16 +259,16 @@ export default function Agenda() {
 }
 
 function ViewSwitcher({ view, onChange }) {
-  const items = [['day', 'Día'], ['week', 'Semana'], ['month', 'Mes']];
+  const items = [['day', 'Día'], ['week', 'Sem.'], ['month', 'Mes']];
   return (
-    <div role="tablist" className="flex rounded-lg border border-border-strong bg-bg-card p-0.5">
+    <div role="tablist" className="flex rounded-lg border border-border-strong bg-bg-card p-0.5 flex-shrink-0">
       {items.map(([id, label]) => (
         <button
           key={id}
           role="tab"
           aria-selected={view === id}
           onClick={() => onChange(id)}
-          className={`px-3 py-1 text-xs font-semibold cursor-pointer transition rounded-md ${
+          className={`px-3 py-1.5 text-xs font-semibold cursor-pointer transition rounded-md ${
             view === id ? 'bg-gold text-[#0d0c0a]' : 'text-text-muted hover:text-text-secondary'
           }`}
         >
