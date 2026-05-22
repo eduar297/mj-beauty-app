@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { Header } from '../Dashboard.jsx';
 import { Icon, Btn, Avatar, Modal, Field, Input, Select, ColorPicker, ListLoading, Spinner, CAT_COLORS } from '../../components/ui.jsx';
+import PhotoCropEditor, { ASPECT_SQUARE } from '../../components/PhotoCropEditor.jsx';
 import { api_staff, api_services, api_staff_services, api_time_off } from '../../lib/api';
 import { DEFAULT_WEEKLY_HOURS, DAY_KEYS_ORDER, DAY_LABELS_ES, normalizeDayRanges } from '../../lib/availability.js';
 
@@ -114,11 +115,20 @@ function StaffForm({ initial, services, onSaved, onDelete }) {
     );
   }, [initial?.id]);
 
-  const handlePhoto = async (e) => {
-    const file = e.target.files?.[0]; if (!file) return;
+  const [pendingPhoto, setPendingPhoto] = useState(null); // file pre-crop
+
+  // Elegir archivo → abrir editor de crop. La subida real ocurre en uploadCropped.
+  const handlePhoto = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setPendingPhoto(file);
+  };
+
+  const uploadCropped = async (croppedFile) => {
     setUploading(true);
     try {
-      const url = await api_staff.uploadPhoto(file, f.name || 'empleada');
+      const url = await api_staff.uploadPhoto(croppedFile, f.name || 'empleada');
       setF(prev => ({ ...prev, photo_url: url }));
     } catch (err) { setErr('Error subiendo foto: ' + err.message); }
     setUploading(false);

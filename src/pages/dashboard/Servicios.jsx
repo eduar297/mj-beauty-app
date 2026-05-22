@@ -208,6 +208,16 @@ function ServiceForm({ initial, onSaved, onDelete }) {
           ? <PhotosGallery serviceId={f.id} serviceName={f.name} />
           : <div className="text-xs text-text-muted bg-bg-card border border-dashed border-border rounded-lg p-3">Guarda el servicio primero para añadir fotos a la galería.</div>}
       </div>
+
+      {/* Editor de crop/zoom — se abre al elegir una foto principal */}
+      <PhotoCropEditor
+        file={pendingFile}
+        open={!!pendingFile}
+        onClose={() => setPendingFile(null)}
+        onApply={uploadCropped}
+        aspect={ASPECT_LANDING_CARD}
+        label="Ajustar foto del servicio"
+      />
     </div>
   );
 }
