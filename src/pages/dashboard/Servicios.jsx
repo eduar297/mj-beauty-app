@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Header } from '../Dashboard.jsx';
 import { Icon, Btn, Modal, Field, Input, Select, ListLoading, Spinner, CAT_COLORS, CAT_ICONS, BeforeAfterPair, PhotoTile } from '../../components/ui.jsx';
+import PhotoCropEditor, { ASPECT_LANDING_CARD } from '../../components/PhotoCropEditor.jsx';
 import { api_services, api_service_photos } from '../../lib/api';
 
 const CATS = ['Uñas','Pedicura','Pelo','Faciales','Cejas','Pestañas'];
