@@ -82,13 +82,23 @@ function ServiceForm({ initial, onSaved, onDelete }) {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [err, setErr] = useState('');
+  const [pendingFile, setPendingFile] = useState(null); // file elegido, esperando crop
   const fileRef = useRef();
 
-  const handlePhoto = async (e) => {
-    const file = e.target.files?.[0]; if (!file) return;
+  // El admin elige una foto → abre el crop editor. La subida real ocurre cuando
+  // aplica el crop (uploadCropped abajo). Así controla exactamente cómo se
+  // verá la foto en la landing antes de subirla.
+  const handlePhoto = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // permite re-seleccionar el mismo archivo si cancela
+    if (!file) return;
+    setPendingFile(file);
+  };
+
+  const uploadCropped = async (croppedFile) => {
     setUploading(true);
     try {
-      const url = await api_services.uploadPhoto(file, f.name || 'servicio');
+      const url = await api_services.uploadPhoto(croppedFile, f.name || 'servicio');
       setF(prev => ({ ...prev, photo_url: url }));
     } catch (err) { alert('Error subiendo foto: ' + err.message); }
     setUploading(false);
