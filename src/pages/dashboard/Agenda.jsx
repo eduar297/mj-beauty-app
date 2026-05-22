@@ -673,7 +673,7 @@ function openWhatsAppConfirmation(appt, kind) {
 }
 
 // ── Form de cita ──────────────────────────────────────────────────────
-function ApptForm({ initial, services, staff, clients, defaultDate, onSaved, onDelete }) {
+export function ApptForm({ initial, services, staff, clients, defaultDate, onSaved, onDelete }) {
   const [f, setF] = useState({
     client_id: '', service_id: '', staff_id: '',
     date: defaultDate, time: '10:00', notes: '', status: 'confirmed',
