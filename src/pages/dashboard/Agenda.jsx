@@ -663,7 +663,7 @@ function openWhatsAppConfirmation(appt, kind) {
   const timeLabel = (appt.time || '').slice(0, 5);
   const messages = {
     confirmed:
-      `Hola ${clientName}! 💛 Tu cita para *${svcName}* el ${dateLabel} a las ${timeLabel} fue *confirmada*. Te esperamos en MJ Beauty.`,
+      `Hola ${clientName}! Tu cita para *${svcName}* el ${dateLabel} a las ${timeLabel} fue *confirmada*. Te esperamos en MJ Beauty.`,
     cancelled:
       `Hola ${clientName}, lamentamos informarte que tu cita para *${svcName}* el ${dateLabel} a las ${timeLabel} no pudo ser confirmada. ¿Quisieras agendar en otro horario? 💛`,
   };
