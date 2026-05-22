@@ -346,12 +346,19 @@ function AddPhotoPanel({ serviceId, serviceName, onAdded, onCancel, onError }) {
 
       {kind === 'pair' ? (
         <div className="grid grid-cols-2 gap-2 mb-3">
-          <FilePicker label="Antes"    file={files.before} fileRef={beforeRef} onPick={(f) => setFiles(s => ({ ...s, before: f }))} disabled={uploading} />
-          <FilePicker label="Después"  file={files.after}  fileRef={afterRef}  onPick={(f) => setFiles(s => ({ ...s, after:  f }))} disabled={uploading} />
+          <FilePicker label="Antes"    file={files.before} fileRef={beforeRef} onPick={(f) => setFiles(s => ({ ...s, before: f }))} disabled={uploading} aspect={1} />
+          <FilePicker label="Después"  file={files.after}  fileRef={afterRef}  onPick={(f) => setFiles(s => ({ ...s, after:  f }))} disabled={uploading} aspect={1} />
         </div>
       ) : (
         <div className="mb-3">
-          <FilePicker label={kind === 'combined' ? 'Foto antes/después en una' : 'Foto'} file={files.single} fileRef={singleRef} onPick={(f) => setFiles(s => ({ ...s, single: f }))} disabled={uploading} />
+          <FilePicker
+            label={kind === 'combined' ? 'Foto antes/después en una' : 'Foto'}
+            file={files.single}
+            fileRef={singleRef}
+            onPick={(f) => setFiles(s => ({ ...s, single: f }))}
+            disabled={uploading}
+            aspect={kind === 'combined' ? 16 / 9 : 1}
+          />
         </div>
       )}
 
@@ -370,7 +377,8 @@ function AddPhotoPanel({ serviceId, serviceName, onAdded, onCancel, onError }) {
   );
 }
 
-function FilePicker({ label, file, fileRef, onPick, disabled }) {
+function FilePicker({ label, file, fileRef, onPick, disabled, aspect = 1 }) {
+  const [pending, setPending] = useState(null); // file pre-crop por picker
   const url = file ? URL.createObjectURL(file) : null;
   return (
     <div>
@@ -381,8 +389,20 @@ function FilePicker({ label, file, fileRef, onPick, disabled }) {
           ? <img src={url} alt="" className="w-full h-full object-cover" />
           : <div className="text-text-muted text-xs">Toca para elegir</div>}
       </div>
+      <PhotoCropEditor
+        file={pending}
+        open={!!pending}
+        onClose={() => setPending(null)}
+        onApply={(cropped) => onPick(cropped)}
+        aspect={aspect}
+        label={`Ajustar ${label.toLowerCase()}`}
+      />
       <input ref={fileRef} type="file" accept="image/*" className="hidden"
-        onChange={e => onPick(e.target.files?.[0] || null)} />
+        onChange={e => {
+          const f = e.target.files?.[0];
+          e.target.value = ''; // permite reabrir mismo archivo
+          if (f) setPending(f); // abre el crop editor; al aplicar llama onPick
+        }} />
     </div>
   );
 }

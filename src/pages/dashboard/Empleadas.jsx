@@ -399,6 +399,16 @@ function StaffForm({ initial, services, onSaved, onDelete }) {
           {saving ? (f.id ? 'Guardando…' : 'Creando…') : (f.id ? 'Guardar' : 'Crear')}
         </Btn>
       </div>
+
+      {/* Editor de crop cuadrado para la foto de perfil */}
+      <PhotoCropEditor
+        file={pendingPhoto}
+        open={!!pendingPhoto}
+        onClose={() => setPendingPhoto(null)}
+        onApply={uploadCropped}
+        aspect={ASPECT_SQUARE}
+        label="Ajustar foto de perfil"
+      />
     </div>
   );
 }

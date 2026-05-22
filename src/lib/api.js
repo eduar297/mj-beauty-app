@@ -8,6 +8,17 @@ const pathFromUrl = (url) => {
   return m ? m[1] : null;
 };
 
+// Para que el nombre del archivo en Storage refleje el formato real del blob
+// (browser-image-compression puede entregar webp, jpeg o png según fileType).
+const extFromMime = (mime) => {
+  switch (mime) {
+    case 'image/webp': return 'webp';
+    case 'image/jpeg': return 'jpg';
+    case 'image/png':  return 'png';
+    default: return null;
+  }
+};
+
 // ─── STAFF ───────────────────────────────────────────────────────────
 export const api_staff = {
   list: () => supabase.from('staff').select('*').eq('active', true).order('name'),
@@ -21,13 +32,20 @@ export const api_staff = {
   update: (id, data) => supabase.from('staff').update(data).eq('id', id).select().single(),
   remove: (id) => supabase.from('staff').update({ active: false }).eq('id', id),
   uploadPhoto: async (file, name) => {
+    // Avatar redondo, 30–80px en UI. 800px wide cubre hi-DPI con margen.
+    // WebP da ~25–30% menos peso que JPEG a calidad equivalente.
     const compressed = await imageCompression(file, {
-      maxSizeMB: 0.6, maxWidthOrHeight: 800, useWebWorker: true,
+      maxSizeMB: 0.25,
+      maxWidthOrHeight: 800,
+      useWebWorker: true,
+      fileType: 'image/webp',
+      initialQuality: 0.82,
     });
-    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    const ext = extFromMime(compressed.type) || (file.name?.split('.').pop() || 'jpg').toLowerCase();
     const slug = (name || 'empleada').replace(/\W+/g, '-').toLowerCase();
     const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${slug}.${ext}`;
-    const { error } = await supabase.storage.from('staff').upload(path, compressed);
+    const { error } = await supabase.storage.from('staff')
+      .upload(path, compressed, { contentType: compressed.type, upsert: false });
     if (error) throw error;
     return supabase.storage.from('staff').getPublicUrl(path).data.publicUrl;
   },
@@ -87,14 +105,21 @@ export const api_services = {
   update: (id, data) => supabase.from('services').update(data).eq('id', id).select().single(),
   remove: (id) => supabase.from('services').update({ active: false }).eq('id', id),
   uploadPhoto: async (file, name, serviceId) => {
+    // Fotos de servicio: se ven a ~340×190 en cards y ~512×288 en detalle.
+    // 1600px wide es suficiente con margen para hi-DPI. WebP recorta peso ~25-30%.
     const compressed = await imageCompression(file, {
-      maxSizeMB: 1.2, maxWidthOrHeight: 2000, useWebWorker: true,
+      maxSizeMB: 0.5,
+      maxWidthOrHeight: 1600,
+      useWebWorker: true,
+      fileType: 'image/webp',
+      initialQuality: 0.85,
     });
-    const ext = (file.name.split('.').pop() || 'jpg').toLowerCase();
+    const ext = extFromMime(compressed.type) || (file.name?.split('.').pop() || 'jpg').toLowerCase();
     const slug = (name || 'foto').replace(/\W+/g, '-').toLowerCase();
     const folder = serviceId ? `${serviceId}/` : '';
     const path = `${folder}${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${slug}.${ext}`;
-    const { error } = await supabase.storage.from('services').upload(path, compressed);
+    const { error } = await supabase.storage.from('services')
+      .upload(path, compressed, { contentType: compressed.type, upsert: false });
     if (error) throw error;
     return supabase.storage.from('services').getPublicUrl(path).data.publicUrl;
   },

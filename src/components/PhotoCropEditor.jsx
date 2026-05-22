@@ -125,13 +125,17 @@ export default function PhotoCropEditor({
       ctx.drawImage(img, srcX, srcY, srcW, srcH, 0, 0, OUT_W, OUT_H);
 
       await new Promise((resolve) => {
+        // WebP recorta ~25-30% vs JPEG a calidad equivalente. Si el navegador no
+        // soporta toBlob con webp (raro hoy), el browser entrega null o el blob
+        // resulta PNG; el siguiente paso de compresión normaliza el formato.
         canvas.toBlob((blob) => {
           if (!blob) { resolve(); return; }
           const base = (file?.name || 'foto').replace(/\.[^.]+$/, '');
-          const cropped = new File([blob], `${base}-cropped.jpg`, { type: 'image/jpeg' });
+          const ext = blob.type === 'image/webp' ? 'webp' : 'jpg';
+          const cropped = new File([blob], `${base}-cropped.${ext}`, { type: blob.type || 'image/jpeg' });
           onApply(cropped);
           resolve();
-        }, 'image/jpeg', 0.92);
+        }, 'image/webp', 0.9);
       });
       onClose();
     } finally {
