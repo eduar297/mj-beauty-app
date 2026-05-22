@@ -67,7 +67,12 @@ export default function Dashboard() {
       await api_notifications.markRead(n.id);
       setNotifs(prev => prev.map(x => x.id === n.id ? { ...x, read_at: new Date().toISOString() } : x));
     }
-    nav('/dashboard/agenda');
+    // Navega a la agenda enfocando la cita específica para que aparezca aunque
+    // esté en otra semana / día, y abre el modal automáticamente.
+    const path = n.appointment_id
+      ? `/dashboard/agenda?focus=${n.appointment_id}`
+      : '/dashboard/agenda';
+    nav(path);
   };
 
   const markAllRead = async () => {

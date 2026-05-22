@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Header } from '../Dashboard.jsx';
 import { Icon, Btn, Modal, Field, Input, Select, ListLoading } from '../../components/ui.jsx';
 import { api_appointments, api_services, api_staff, api_clients } from '../../lib/api';
@@ -45,6 +46,8 @@ function computeHourRange(appts) {
 export default function Agenda() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin';
+  const [searchParams, setSearchParams] = useSearchParams();
+  const focusId = searchParams.get('focus');
   // En móvil arrancamos en Día porque Semana aplasta 7 columnas en <400px.
   const [view, setView] = useState(() => (typeof window !== 'undefined' && window.innerWidth < 768) ? 'day' : 'week');
   const [anchor, setAnchor] = useState(() => new Date());
@@ -53,6 +56,8 @@ export default function Agenda() {
   const [services, setServices] = useState([]);
   const [staff, setStaff] = useState([]);
   const [clients, setClients] = useState([]);
+  // Filtro para admin: '' = todas las empleadas, '<staff_id>' = solo esa empleada.
+  const [staffFilter, setStaffFilter] = useState('');
 
   const loadedRef = useRef({ from: '', to: '' });
 
@@ -94,13 +99,48 @@ export default function Agenda() {
     }
   }, [visibleRange.from, visibleRange.to]);
 
+  // Si llegamos con ?focus=<id> (típicamente desde una notificación),
+  // saltar al día de esa cita, cambiar a vista día y abrir el modal.
+  useEffect(() => {
+    if (!focusId || !appts) return;
+    const target = appts.find(a => a.id === focusId);
+    if (!target) {
+      // La cita no está en la ventana cargada — recargamos centrados en su fecha
+      // Sin la fecha no podemos saltar; cargamos ventana amplia desde hoy.
+      api_appointments.list({ from: toISO(addDays(new Date(), -180)), to: toISO(addDays(new Date(), 365)) })
+        .then(({ data }) => {
+          const t = (data || []).find(a => a.id === focusId);
+          if (t) {
+            setAppts(data || []);
+            setAnchor(new Date(`${t.date}T00:00:00`));
+            setView('day');
+            setEditing({ ...t });
+          }
+          // Limpia el query param para que clicks subsiguientes no re-disparen
+          setSearchParams({});
+        });
+      return;
+    }
+    setAnchor(new Date(`${target.date}T00:00:00`));
+    setView('day');
+    setEditing({ ...target });
+    setSearchParams({});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusId, appts]);
+
   const filtered = useMemo(() => {
     if (appts === null) return null;
     return appts.filter(a => {
+      // Empleada solo ve las suyas; admin ve todo (con opción de filtrar abajo).
       if (user?.role === 'empleada' && a.staff_id !== user.id) return false;
+      // Filtro manual del admin por empleada (solo aplica si está activo).
+      if (isAdmin && staffFilter && a.staff_id !== staffFilter) return false;
       return a.date >= visibleRange.from && a.date <= visibleRange.to;
     });
-  }, [appts, user, visibleRange.from, visibleRange.to]);
+  }, [appts, user, isAdmin, staffFilter, visibleRange.from, visibleRange.to]);
+
+  // Conteo de pendientes en el rango visible (badge para llamar la atención).
+  const pendingCount = useMemo(() => (filtered || []).filter(a => a.status === 'pending').length, [filtered]);
 
   const shift = (n) => {
     if (view === 'day') setAnchor(addDays(anchor, n));
@@ -145,12 +185,40 @@ export default function Agenda() {
         }
       />
 
+      {/* Filtro por empleada (solo admin) + badge de pendientes */}
+      {isAdmin && staff.length > 0 && (
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
+          <span className="text-[11px] text-text-muted uppercase tracking-widest">Empleada:</span>
+          <button onClick={() => setStaffFilter('')}
+            className={`text-xs px-2.5 py-1 rounded-full border cursor-pointer transition ${
+              staffFilter === '' ? 'bg-gold text-[#0d0c0a] border-gold font-semibold' : 'bg-bg-card border-border text-text-muted hover:text-text-secondary hover:border-border-strong'
+            }`}>
+            Todas
+          </button>
+          {staff.map(s => (
+            <button key={s.id} onClick={() => setStaffFilter(s.id)}
+              style={staffFilter === s.id ? { background: s.color, borderColor: s.color, color: '#0d0c0a' } : {}}
+              className={`text-xs px-2.5 py-1 rounded-full border cursor-pointer transition flex items-center gap-1.5 ${
+                staffFilter === s.id ? 'font-semibold' : 'bg-bg-card border-border text-text-muted hover:text-text-secondary hover:border-border-strong'
+              }`}>
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: staffFilter === s.id ? '#0d0c0a' : s.color }} />
+              {s.name}
+            </button>
+          ))}
+          {pendingCount > 0 && (
+            <span className="ml-auto text-[11px] px-2 py-1 rounded-full bg-gold/15 text-gold border border-gold/40">
+              {pendingCount} pendiente{pendingCount === 1 ? '' : 's'}
+            </span>
+          )}
+        </div>
+      )}
+
       {filtered === null ? (
         <ListLoading label="Cargando agenda…" />
       ) : view === 'day' ? (
-        <DayView anchor={anchor} appointments={filtered} onClickAppt={(a) => isAdmin && setEditing({ ...a })} />
+        <DayView anchor={anchor} appointments={filtered} onClickAppt={(a) => setEditing({ ...a })} />
       ) : view === 'week' ? (
-        <WeekView anchor={anchor} appointments={filtered} onClickAppt={(a) => isAdmin && setEditing({ ...a })} onPickDay={(d) => { setAnchor(d); setView('day'); }} />
+        <WeekView anchor={anchor} appointments={filtered} onClickAppt={(a) => setEditing({ ...a })} onPickDay={(d) => { setAnchor(d); setView('day'); }} />
       ) : (
         <MonthView anchor={anchor} appointments={filtered} onPickDay={(d) => { setAnchor(d); setView('day'); }} />
       )}

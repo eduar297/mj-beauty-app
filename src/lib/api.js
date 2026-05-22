@@ -188,7 +188,14 @@ export const api_appointments = {
   // list('2026-05-18')                 → un solo día (compat anterior)
   // list({ from: '..', to: '..' })     → rango inclusivo (semana / mes)
   list: (arg) => {
-    let q = supabase.from('appointments').select('*, clients(name,phone), staff(name,color), services(name,cat,duration)');
+    // IMPORTANTE: appointments tiene 2 FKs hacia staff (staff_id y
+    // preferred_staff_id), así que el join debe ser explícito o PostgREST
+    // devuelve error de "ambiguous relationship". `staff!staff_id(...)`
+    // fuerza usar la FK de staff_id; lo mismo aplica si quisiéramos
+    // mostrar la empleada preferida.
+    let q = supabase.from('appointments').select(
+      '*, clients(name,phone), staff:staff_id(name,color), services(name,cat,duration)'
+    );
     if (typeof arg === 'string') q = q.eq('date', arg);
     else if (arg && typeof arg === 'object') {
       if (arg.from) q = q.gte('date', arg.from);
