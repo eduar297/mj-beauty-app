@@ -6,15 +6,33 @@ import {
 } from '../lib/api';
 import { computeAvailableSlots } from '../lib/availability.js';
 
+// Clave para recordar a la clienta en este navegador. Mejora la UX en mobile:
+// al volver a reservar, el teléfono (y el nombre) ya están pre-llenados.
+const LS_KEY = 'mj-booking-identity';
+const readLocalIdentity = () => {
+  try {
+    const raw = typeof window !== 'undefined' ? window.localStorage.getItem(LS_KEY) : null;
+    if (!raw) return { phone: '', name: '' };
+    const parsed = JSON.parse(raw);
+    return { phone: parsed.phone || '', name: parsed.name || '' };
+  } catch { return { phone: '', name: '' }; }
+};
+const saveLocalIdentity = ({ phone, name }) => {
+  try {
+    window.localStorage.setItem(LS_KEY, JSON.stringify({ phone, name }));
+  } catch {}
+};
+
 // Formulario público de reserva — usado tanto por Landing como por Services.
 // Es la "registración" implícita: la primera vez crea fila en clients,
 // la próxima reconoce a la clienta por teléfono.
 export default function PublicBookingForm({ onClose, defaultService, services: servicesProp }) {
   const today = new Date().toISOString().slice(0, 10);
 
-  // Estado del formulario
-  const [phone, setPhone] = useState('');
-  const [name, setName] = useState('');
+  // Estado del formulario — pre-llenado con la identidad guardada en este
+  // navegador (si existe). Esto evita re-tipear el teléfono en cada visita.
+  const [phone, setPhone] = useState(() => readLocalIdentity().phone);
+  const [name, setName] = useState(() => readLocalIdentity().name);
   const [serviceName, setServiceName] = useState(defaultService || '');
   const [date, setDate] = useState(today);
   const [preferredStaffId, setPreferredStaffId] = useState('');
@@ -146,6 +164,8 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
         notes: null,
       });
       if (res.error) throw res.error;
+      // Persistir identidad en este dispositivo para autocompletar la próxima vez.
+      saveLocalIdentity({ phone, name });
       setIsNew(newClient);
       setDone(true);
     } catch (e) {
@@ -193,14 +213,26 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
           </Field>
 
           {/* Hint contextual sobre si la clienta es conocida o nueva */}
-          <div className="-mt-2 mb-3 text-xs min-h-[18px]">
-            {phoneLookupBusy ? (
-              <span className="text-text-muted">Buscando…</span>
-            ) : existingClient ? (
-              <span className="text-gold">👋 ¡Hola de nuevo, {existingClient.name}!</span>
-            ) : phone.replace(/\D/g, '').length >= 7 ? (
-              <span className="text-text-muted">¿Es tu primera vez? Tu información quedará guardada para próximas citas.</span>
-            ) : null}
+          <div className="-mt-2 mb-3 text-xs min-h-[18px] flex justify-between items-center gap-3">
+            <div className="min-w-0 truncate">
+              {phoneLookupBusy ? (
+                <span className="text-text-muted">Buscando…</span>
+              ) : existingClient ? (
+                <span className="text-gold">👋 ¡Hola de nuevo, {existingClient.name}!</span>
+              ) : phone.replace(/\D/g, '').length >= 7 ? (
+                <span className="text-text-muted">¿Es tu primera vez? Tu información quedará guardada para próximas citas.</span>
+              ) : null}
+            </div>
+            {existingClient && (
+              <button type="button"
+                onClick={() => {
+                  try { window.localStorage.removeItem(LS_KEY); } catch {}
+                  setPhone(''); setName(''); setExistingClient(null);
+                }}
+                className="text-text-muted hover:text-text-secondary underline underline-offset-2 cursor-pointer whitespace-nowrap flex-shrink-0">
+                No soy yo
+              </button>
+            )}
           </div>
 
           <Field label="Nombre completo">
