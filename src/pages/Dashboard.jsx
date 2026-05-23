@@ -4,7 +4,6 @@ import { useAuth } from '../hooks/useAuth.jsx';
 import { Icon, Avatar } from '../components/ui.jsx';
 import { api_notifications } from '../lib/api';
 import Agenda from './dashboard/Agenda.jsx';
-import AgendaBeta from './dashboard/AgendaBeta.jsx';
 import Clientes from './dashboard/Clientes.jsx';
 import Servicios from './dashboard/Servicios.jsx';
 import Empleadas from './dashboard/Empleadas.jsx';
@@ -13,7 +12,6 @@ import Configuracion from './dashboard/Configuracion.jsx';
 
 const TABS = [
   { id: 'agenda',        label: 'Agenda',        icon: 'calendar', roles: ['admin','empleada'] },
-  { id: 'agenda-beta',   label: 'Agenda β',      icon: 'calendar', roles: ['admin','empleada'] },
   { id: 'clientes',      label: 'Clientes',      icon: 'users',    roles: ['admin','empleada'] },
   { id: 'servicios',     label: 'Servicios',     icon: 'scissors', roles: ['admin'] },
   { id: 'empleadas',     label: 'Empleadas',     icon: 'staff',    roles: ['admin'] },
@@ -207,7 +205,6 @@ export default function Dashboard() {
           <Routes>
             <Route index element={<Agenda />} />
             <Route path="agenda" element={<Agenda />} />
-            <Route path="agenda-beta" element={<AgendaBeta />} />
             <Route path="clientes" element={<Clientes />} />
             <Route path="servicios" element={<Servicios />} />
             <Route path="empleadas" element={<Empleadas />} />

@@ -101,12 +101,3 @@ input, select, textarea { font-family: inherit; }
 
 html { scroll-behavior: smooth; }
 
-/* Schedule-X (AgendaBeta) — el wrapper del evento añade su propio padding;
-   con customComponents queremos llenar todo el espacio. */
-.sx-mj .sx__time-grid-event,
-.sx-mj .sx__date-grid-event,
-.sx-mj .sx__month-grid-event { padding: 0; background: transparent; border: 0; }
-.sx-mj .sx__time-grid-event > *,
-.sx-mj .sx__date-grid-event > *,
-.sx-mj .sx__month-grid-event > * { height: 100%; }
-
