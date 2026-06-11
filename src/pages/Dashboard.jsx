@@ -6,6 +6,7 @@ import { api_notifications } from '../lib/api';
 import Agenda from './dashboard/Agenda.jsx';
 import Clientes from './dashboard/Clientes.jsx';
 import Servicios from './dashboard/Servicios.jsx';
+import Productos from './dashboard/Productos.jsx';
 import Empleadas from './dashboard/Empleadas.jsx';
 import Caja from './dashboard/Caja.jsx';
 import Configuracion from './dashboard/Configuracion.jsx';
@@ -14,6 +15,7 @@ const TABS = [
   { id: 'agenda',        label: 'Agenda',        icon: 'calendar', roles: ['admin','empleada'] },
   { id: 'clientes',      label: 'Clientes',      icon: 'users',    roles: ['admin','empleada'] },
   { id: 'servicios',     label: 'Servicios',     icon: 'scissors', roles: ['admin'] },
+  { id: 'productos',     label: 'Productos',     icon: 'bag',      roles: ['admin'] },
   { id: 'empleadas',     label: 'Empleadas',     icon: 'staff',    roles: ['admin'] },
   { id: 'caja',          label: 'Caja',          icon: 'cash',     roles: ['admin'] },
   { id: 'configuracion', label: 'Personalización', icon: 'settings', roles: ['admin'] },
@@ -207,6 +209,7 @@ export default function Dashboard() {
             <Route path="agenda" element={<Agenda />} />
             <Route path="clientes" element={<Clientes />} />
             <Route path="servicios" element={<Servicios />} />
+            <Route path="productos" element={<Productos />} />
             <Route path="empleadas" element={<Empleadas />} />
             <Route path="caja" element={<Caja />} />
             <Route path="configuracion" element={<Configuracion />} />

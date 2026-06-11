@@ -313,6 +313,46 @@ create policy "service_photos_public_read" on service_photos for select using (t
 drop policy if exists "service_photos_anon_all"   on service_photos;
 create policy "service_photos_anon_all"   on service_photos for all using (true);
 
+-- ───── Tabla: products (productos de belleza a la venta) ────────────
+create table if not exists products (
+  id uuid primary key default uuid_generate_v4(),
+  name text not null,
+  cat text not null default 'Otros'
+    check (cat in ('Uñas','Piel','Cabello','Maquillaje','Accesorios','Otros')),
+  description text,
+  price numeric(12,0) not null default 0,
+  photo_url text,
+  stock int not null default 0 check (stock >= 0),
+  featured boolean default false,           -- destacado en la landing
+  active boolean default true,              -- soft delete
+  sort_order int default 0,                 -- orden manual (drag-and-drop)
+  created_at timestamptz default now()
+);
+create index if not exists products_sort_idx on products(cat, sort_order);
+
+alter table products enable row level security;
+drop policy if exists "products_public_read" on products;
+create policy "products_public_read" on products for select using (true);
+drop policy if exists "products_anon_all" on products;
+create policy "products_anon_all" on products for all using (true);
+
+-- Storage: bucket para fotos de productos
+insert into storage.buckets (id, name, public)
+values ('products', 'products', true)
+on conflict do nothing;
+
+drop policy if exists "products_storage_public" on storage.objects;
+create policy "products_storage_public" on storage.objects for select
+using (bucket_id = 'products');
+
+drop policy if exists "products_storage_upload" on storage.objects;
+create policy "products_storage_upload" on storage.objects for insert
+with check (bucket_id = 'products');
+
+drop policy if exists "products_storage_delete" on storage.objects;
+create policy "products_storage_delete" on storage.objects for delete
+using (bucket_id = 'products');
+
 -- ───── Seed: un admin inicial ───────────────────────────────────────
 -- IMPORTANTE: cambia este PIN después de crear todo
 -- Solo inserta si todavía no existe ningún admin (el PIN ya no es UNIQUE).

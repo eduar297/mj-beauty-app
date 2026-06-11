@@ -2,7 +2,8 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
 import { Icon, Modal, GoldDivider, BeforeAfterPair, PhotoTile, Lightbox, photosToSlides } from '../components/ui.jsx';
 import PublicBookingForm from '../components/PublicBookingForm.jsx';
-import { api_service_photos, api_settings } from '../lib/api';
+import ProductCard from '../components/ProductCard.jsx';
+import { api_service_photos, api_settings, api_products } from '../lib/api';
 
 export default function Landing() {
   const nav = useNavigate();
@@ -10,11 +11,13 @@ export default function Landing() {
   const [bookingOpen, setBookingOpen] = useState(false);
   const [settings, setSettings] = useState(null);
   const [galleryPhotos, setGalleryPhotos] = useState([]);
+  const [products, setProducts] = useState([]);
   const [lightbox, setLightbox] = useState(null); // { slides, index }
 
   useEffect(() => {
     api_settings.get().then(({ data }) => setSettings(data || {}));
     api_service_photos.listForLanding(8).then(({ data }) => setGalleryPhotos(data || []));
+    api_products.listFeatured(8).then(({ data }) => setProducts(data || []));
   }, []);
 
   const openLightboxAt = (photoId) => {
@@ -43,6 +46,7 @@ export default function Landing() {
         <div className="hidden md:flex gap-8 text-sm text-text-secondary">
           <a href="#servicios" className="hover:text-gold transition-colors focus-visible:outline-none focus-visible:text-gold">Servicios</a>
           <Link to="/galeria"  className="hover:text-gold transition-colors focus-visible:outline-none focus-visible:text-gold">Galería</Link>
+          {products.length > 0 && <a href="#productos" className="hover:text-gold transition-colors focus-visible:outline-none focus-visible:text-gold">Productos</a>}
           <a href="#nosotras"  className="hover:text-gold transition-colors focus-visible:outline-none focus-visible:text-gold">Nosotras</a>
           <a href="#contacto"  className="hover:text-gold transition-colors focus-visible:outline-none focus-visible:text-gold">Contacto</a>
         </div>
@@ -59,6 +63,7 @@ export default function Landing() {
         <div className="md:hidden fixed top-16 inset-x-0 z-40 bg-bg-card border-b border-border p-4 flex flex-col gap-1 shadow-2xl">
           <a href="#servicios" onClick={() => setMenuOpen(false)} className="py-3 px-2 border-b border-border">Servicios</a>
           <Link to="/galeria"  onClick={() => setMenuOpen(false)} className="py-3 px-2 border-b border-border">Galería</Link>
+          {products.length > 0 && <a href="#productos" onClick={() => setMenuOpen(false)} className="py-3 px-2 border-b border-border">Productos</a>}
           <a href="#nosotras"  onClick={() => setMenuOpen(false)} className="py-3 px-2 border-b border-border">Nosotras</a>
           <a href="#contacto"  onClick={() => setMenuOpen(false)} className="py-3 px-2 border-b border-border">Contacto</a>
           <div className="flex gap-2 mt-3">
@@ -137,6 +142,28 @@ export default function Landing() {
               <div className="text-center mt-8">
                 <Link to="/galeria" className="inline-block px-7 py-3 border border-border-strong rounded-lg text-gold font-semibold hover:bg-gold-dim transition cursor-pointer">
                   Ver galería completa →
+                </Link>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {products.length > 0 && (
+          <section id="productos" className="px-4 py-20 sm:px-10 bg-bg-card scroll-mt-20">
+            <div className="max-w-5xl mx-auto">
+              <div className="text-center mb-10">
+                <div className="text-[11px] uppercase tracking-widest text-gold mb-3">Llévate la belleza a casa</div>
+                <h2 className="font-serif font-semibold mb-2" style={{ fontSize: 'clamp(28px,5vw,40px)' }}>Nuestros Productos</h2>
+                <p className="text-text-muted text-sm max-w-md mx-auto">Los productos que usamos y amamos, disponibles para ti.</p>
+              </div>
+              <div className="grid gap-4 justify-center" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 280px))' }}>
+                {products.map(p => (
+                  <ProductCard key={p.id} product={p} whatsapp={s.whatsapp} />
+                ))}
+              </div>
+              <div className="text-center mt-8">
+                <Link to="/productos" className="inline-block px-7 py-3 border border-border-strong rounded-lg text-gold font-semibold hover:bg-gold-dim transition cursor-pointer">
+                  Ver todos los productos →
                 </Link>
               </div>
             </div>

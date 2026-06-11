@@ -41,6 +41,7 @@ export function Icon({ name, size = 18, color = 'currentColor' }) {
     tiktok: "M9 12a4 4 0 104 4V4a5 5 0 005 5",
     save: "M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2zM17 21v-8H7v8M7 3v5h8",
     whatsapp: "M3 21l1.65-3.8a9 9 0 113.4 2.9zM9 10a.5.5 0 011 0v1a.5.5 0 01-1 0zM14 10a.5.5 0 011 0v1a.5.5 0 01-1 0zM9 14c1 1 2 1.5 3 1.5s2-.5 3-1.5",
+    bag: "M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0",
     info: "M12 22a10 10 0 100-20 10 10 0 000 20zM12 8h.01M11 12h1v4h1",
   };
   return (
@@ -52,6 +53,10 @@ export function Icon({ name, size = 18, color = 'currentColor' }) {
 
 export const CAT_COLORS = { 'Uñas': '#c9a96e', 'Pedicura': '#d8b87a', 'Pelo': '#d4a5a0', 'Faciales': '#a8c4c0', 'Cejas': '#c4b8a0', 'Pestañas': '#b8a0c4' };
 export const CAT_ICONS = { 'Uñas': 'nail', 'Pedicura': 'foot', 'Pelo': 'hair', 'Faciales': 'face', 'Cejas': 'brow', 'Pestañas': 'eye' };
+
+// Categorías de productos a la venta (distintas de las de servicios).
+export const PROD_CAT_COLORS = { 'Uñas': '#c9a96e', 'Piel': '#a8c4c0', 'Cabello': '#d4a5a0', 'Maquillaje': '#b8a0c4', 'Accesorios': '#c4b8a0', 'Otros': '#8a6f4a' };
+export const PROD_CAT_ICONS = { 'Uñas': 'nail', 'Piel': 'face', 'Cabello': 'hair', 'Maquillaje': 'sparkle', 'Accesorios': 'star', 'Otros': 'bag' };
 
 export function StatusBadge({ status }) {
   const map = {

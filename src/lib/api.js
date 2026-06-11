@@ -182,6 +182,54 @@ export const api_service_photos = {
   },
 };
 
+// ─── PRODUCTS (productos de belleza a la venta) ──────────────────────
+export const api_products = {
+  // Mismo orden que services: categoría → orden manual → nombre.
+  list: () =>
+    supabase.from('products').select('*').eq('active', true)
+      .order('cat').order('sort_order').order('name'),
+  listPublic: () =>
+    supabase.from('products').select('*').eq('active', true)
+      .order('cat').order('sort_order').order('name'),
+  // Destacados para la sección de la landing.
+  listFeatured: (limit = 8) =>
+    supabase.from('products').select('*').eq('active', true).eq('featured', true)
+      .order('sort_order').order('name').limit(limit),
+  create: (data) => supabase.from('products').insert(data).select().single(),
+  update: (id, data) => supabase.from('products').update(data).eq('id', id).select().single(),
+  remove: (id) => supabase.from('products').update({ active: false }).eq('id', id),
+  reorder: async (orderedIds) => {
+    // updates secuenciales — la tabla es pequeña (decenas de productos).
+    for (let i = 0; i < orderedIds.length; i++) {
+      await supabase.from('products').update({ sort_order: i }).eq('id', orderedIds[i]);
+    }
+    return { ok: true };
+  },
+  // Suma/resta unidades clampando en 0 (la BD tiene check stock >= 0).
+  adjustStock: async (id, delta) => {
+    const { data: row } = await supabase.from('products').select('stock').eq('id', id).maybeSingle();
+    const next = Math.max(0, (row?.stock ?? 0) + delta);
+    return supabase.from('products').update({ stock: next }).eq('id', id).select().single();
+  },
+  uploadPhoto: async (file, name) => {
+    // Fotos de producto: cards cuadradas de ~220-320px. 1200px cubre hi-DPI.
+    const compressed = await imageCompression(file, {
+      maxSizeMB: 0.4,
+      maxWidthOrHeight: 1200,
+      useWebWorker: true,
+      fileType: 'image/webp',
+      initialQuality: 0.85,
+    });
+    const ext = extFromMime(compressed.type) || (file.name?.split('.').pop() || 'jpg').toLowerCase();
+    const slug = (name || 'producto').replace(/\W+/g, '-').toLowerCase();
+    const path = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${slug}.${ext}`;
+    const { error } = await supabase.storage.from('products')
+      .upload(path, compressed, { contentType: compressed.type, upsert: false });
+    if (error) throw error;
+    return supabase.storage.from('products').getPublicUrl(path).data.publicUrl;
+  },
+};
+
 // ─── APPOINTMENTS ────────────────────────────────────────────────────
 // Recolecta destinatarios para una notificación de cita:
 // siempre todas las admins activas + la empleada asignada (si existe y no es admin).
