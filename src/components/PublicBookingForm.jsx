@@ -9,7 +9,7 @@ import { computeAvailableSlots } from '../lib/availability.js';
 // Clave para recordar a la clienta en este navegador. Mejora la UX en mobile:
 // al volver a reservar, el teléfono (y el nombre) ya están pre-llenados.
 const LS_KEY = 'mj-booking-identity';
-const readLocalIdentity = () => {
+export const readLocalIdentity = () => {
   try {
     const raw = typeof window !== 'undefined' ? window.localStorage.getItem(LS_KEY) : null;
     if (!raw) return { phone: '', name: '' };
@@ -17,7 +17,7 @@ const readLocalIdentity = () => {
     return { phone: parsed.phone || '', name: parsed.name || '' };
   } catch { return { phone: '', name: '' }; }
 };
-const saveLocalIdentity = ({ phone, name }) => {
+export const saveLocalIdentity = ({ phone, name }) => {
   try {
     window.localStorage.setItem(LS_KEY, JSON.stringify({ phone, name }));
   } catch {}

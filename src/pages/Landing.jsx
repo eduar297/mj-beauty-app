@@ -1,9 +1,9 @@
 import { useNavigate, Link } from 'react-router-dom';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Icon, Modal, GoldDivider, BeforeAfterPair, PhotoTile, Lightbox, photosToSlides, Stars, Avatar, Field, Input, Textarea, Btn } from '../components/ui.jsx';
-import PublicBookingForm from '../components/PublicBookingForm.jsx';
+import PublicBookingForm, { readLocalIdentity, saveLocalIdentity } from '../components/PublicBookingForm.jsx';
 import ProductCard from '../components/ProductCard.jsx';
-import { api_service_photos, api_settings, api_products, api_reviews } from '../lib/api';
+import { api_service_photos, api_settings, api_products, api_reviews, api_clients } from '../lib/api';
 
 export default function Landing() {
   const nav = useNavigate();
@@ -360,28 +360,61 @@ function ReviewCard({ r }) {
 }
 
 function ReviewForm({ onCreated, onClose }) {
-  const [name, setName] = useState('');
+  // Identidad compartida con el formulario de reserva: si ya reservó desde
+  // este navegador, el teléfono y el nombre vienen pre-llenados.
+  const [phone, setPhone] = useState(() => readLocalIdentity().phone);
+  const [name, setName] = useState(() => readLocalIdentity().name);
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
+  const [existingClient, setExistingClient] = useState(null); // {id, name, status}
+  const [lookupBusy, setLookupBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState(null);
 
+  // Lookup por teléfono (debounced 600ms) cuando hay 7+ dígitos — igual que en reservas.
+  const lookupTimer = useRef(null);
+  useEffect(() => {
+    if (lookupTimer.current) clearTimeout(lookupTimer.current);
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length < 7) { setExistingClient(null); return; }
+    lookupTimer.current = setTimeout(async () => {
+      setLookupBusy(true);
+      try {
+        const { data } = await api_clients.findByPhone(phone);
+        if (data) {
+          setExistingClient(data);
+          setName(prev => prev.trim() ? prev : (data.name || ''));
+        } else {
+          setExistingClient(null);
+        }
+      } finally {
+        setLookupBusy(false);
+      }
+    }, 600);
+    return () => clearTimeout(lookupTimer.current);
+  }, [phone]);
+
+  const phoneOk = phone.replace(/\D/g, '').length >= 7;
+
   const submit = async (e) => {
     e.preventDefault();
-    if (!name.trim() || saving) return;
+    if (!name.trim() || !phoneOk || saving) return;
     setSaving(true);
     setError(null);
     const { data, error: err } = await api_reviews.create({
       name: name.trim(),
       rating,
       comment: comment.trim() || null,
+      phone: phone.replace(/\D/g, ''),
+      client_id: existingClient?.id || null,
     });
     setSaving(false);
     if (err) {
       setError('No se pudo enviar la reseña. Inténtalo de nuevo en un momento.');
       return;
     }
+    saveLocalIdentity({ phone, name: name.trim() });
     setSent(true);
     if (data) onCreated?.(data);
   };
@@ -401,6 +434,32 @@ function ReviewForm({ onCreated, onClose }) {
 
   return (
     <form onSubmit={submit}>
+      <Field label="Tu teléfono">
+        <Input value={phone} type="tel"
+          onChange={e => setPhone(e.target.value)}
+          placeholder="+53 5 000 0000" />
+      </Field>
+
+      {/* Hint contextual — igual que en el formulario de reserva */}
+      <div className="-mt-2 mb-3 text-xs min-h-[18px] flex justify-between items-center gap-3">
+        <div className="min-w-0 truncate">
+          {lookupBusy ? (
+            <span className="text-text-muted">Buscando…</span>
+          ) : existingClient ? (
+            <span className="text-gold">👋 ¡Hola de nuevo, {existingClient.name}!</span>
+          ) : phoneOk ? (
+            <span className="text-text-muted">Tu teléfono no se muestra en la página — es solo para saber que eres tú.</span>
+          ) : null}
+        </div>
+        {existingClient && (
+          <button type="button"
+            onClick={() => { setPhone(''); setName(''); setExistingClient(null); }}
+            className="text-text-muted hover:text-text-secondary underline underline-offset-2 cursor-pointer whitespace-nowrap flex-shrink-0">
+            No soy yo
+          </button>
+        )}
+      </div>
+
       <Field label="Tu nombre">
         <Input value={name} onChange={e => setName(e.target.value)} placeholder="¿Cómo te llamas?" />
       </Field>
@@ -417,7 +476,7 @@ function ReviewForm({ onCreated, onClose }) {
       {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
       <div className="flex justify-end gap-2 mt-1">
         <Btn variant="ghost" onClick={onClose}>Cancelar</Btn>
-        <Btn type="submit" loading={saving} disabled={!name.trim()}>Enviar reseña</Btn>
+        <Btn type="submit" loading={saving} disabled={!name.trim() || !phoneOk}>Enviar reseña</Btn>
       </div>
     </form>
   );

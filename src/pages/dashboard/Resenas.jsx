@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Header } from '../Dashboard.jsx';
-import { Icon, Btn, Stars, ListLoading } from '../../components/ui.jsx';
+import { Icon, Btn, Stars, ListLoading, StatusBadge } from '../../components/ui.jsx';
 import { api_reviews } from '../../lib/api';
 
 const FILTERS = [
@@ -84,12 +84,15 @@ export default function Resenas() {
                   <div className="flex items-center gap-2.5 flex-wrap">
                     <span className="font-semibold text-sm">{r.name}</span>
                     <Stars value={r.rating} size={13} />
+                    {r.clients && <StatusBadge status={r.clients.status} />}
                     {!r.approved && (
                       <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wider bg-red-500/15 text-red-400">Oculta</span>
                     )}
                   </div>
                   <div className="text-[11px] text-text-muted mt-1">
                     {new Date(r.created_at).toLocaleString('es-CO', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    {r.phone && <> · 📞 {r.phone}</>}
+                    {r.clients?.visits != null && <> · {r.clients.visits} visita{r.clients.visits !== 1 ? 's' : ''}</>}
                   </div>
                 </div>
                 <div className="flex gap-2 flex-shrink-0">

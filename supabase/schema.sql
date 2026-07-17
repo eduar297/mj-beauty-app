@@ -52,6 +52,11 @@ create table if not exists clients (
 alter table clients drop column if exists email;
 -- Index para lookup público por teléfono en el booking.
 create index if not exists clients_phone_idx on clients(phone);
+-- Migration: normalizar teléfonos a solo dígitos — el buscador público
+-- compara sin espacios/+/guiones, y los guardados desde el dashboard
+-- venían con formato (p.ej. "+53 5 4208213") y nunca coincidían.
+update clients set phone = regexp_replace(phone, '\D', '', 'g')
+  where phone is not null and phone ~ '\D';
 
 -- ───── Tabla: services ──────────────────────────────────────────────
 create table if not exists services (
@@ -359,10 +364,16 @@ create table if not exists reviews (
   name text not null,
   rating int not null check (rating between 1 and 5),
   comment text,
+  phone text,                               -- identifica a la clienta; NO se muestra en la web
+  client_id uuid references clients(id) on delete set null,
   approved boolean default true,            -- el admin puede ocultar reseñas
   created_at timestamptz default now()
 );
 create index if not exists reviews_created_idx on reviews(created_at desc);
+
+-- Migration: identidad de la clienta (buscador por teléfono, como en reservas).
+alter table reviews add column if not exists phone text;
+alter table reviews add column if not exists client_id uuid references clients(id) on delete set null;
 
 alter table reviews enable row level security;
 drop policy if exists "reviews_public_read" on reviews;
@@ -418,7 +429,7 @@ begin
   select name into v_pref from staff where id = new.preferred_staff_id;
   msg := '📅 Nueva reserva' || E'\n'
       || 'Clienta: ' || coalesce(v_client, 'Sin nombre')
-      || coalesce(' (+' || nullif(v_phone, '') || ')', '') || E'\n'
+      || coalesce(' (' || nullif(v_phone, '') || ')', '') || E'\n'
       || 'Servicio: ' || coalesce(v_service, '—') || E'\n'
       || 'Fecha: ' || to_char(new.date, 'DD/MM/YYYY') || ' a las ' || to_char(new.time, 'HH24:MI');
   if v_staff is not null then
@@ -437,10 +448,21 @@ create trigger appointments_tg_notify
 
 create or replace function tg_notify_review() returns trigger
 language plpgsql security definer set search_path = public as $$
+declare v_status text; v_visits int; v_extra text := '';
 begin
+  if new.client_id is not null then
+    select status, visits into v_status, v_visits from clients where id = new.client_id;
+    if found then
+      v_extra := E'\n' || 'Clienta registrada'
+        || case when v_status = 'vip' then ' 💎 VIP' when v_status = 'new' then ' (nueva)' else '' end
+        || coalesce(' · ' || v_visits || ' visitas', '');
+    end if;
+  end if;
   perform tg_send(
     '⭐ Nueva reseña (' || new.rating || '/5)' || E'\n'
     || 'De: ' || new.name
+    || coalesce(' (' || nullif(new.phone, '') || ')', '')
+    || v_extra
     || coalesce(E'\n' || '"' || nullif(trim(new.comment), '') || '"', '')
   );
   return new;
@@ -450,6 +472,85 @@ drop trigger if exists reviews_tg_notify on reviews;
 create trigger reviews_tg_notify
   after insert on reviews
   for each row execute function tg_notify_review();
+
+-- Aviso cuando una cita pasa a cancelada (desde el dashboard o donde sea).
+create or replace function tg_notify_appointment_cancelled() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare v_client text; v_phone text; v_service text; msg text;
+begin
+  select name, phone into v_client, v_phone from clients where id = new.client_id;
+  select name into v_service from services where id = new.service_id;
+  msg := '❌ Cita cancelada' || E'\n'
+      || 'Clienta: ' || coalesce(v_client, 'Sin nombre')
+      || coalesce(' (' || nullif(v_phone, '') || ')', '') || E'\n'
+      || 'Servicio: ' || coalesce(v_service, '—') || E'\n'
+      || 'Era: ' || to_char(new.date, 'DD/MM/YYYY') || ' a las ' || to_char(new.time, 'HH24:MI');
+  perform tg_send(msg);
+  return new;
+end $$;
+
+drop trigger if exists appointments_tg_notify_cancel on appointments;
+create trigger appointments_tg_notify_cancel
+  after update on appointments
+  for each row
+  when (old.status is distinct from new.status and new.status = 'cancelled')
+  execute function tg_notify_appointment_cancelled();
+
+-- Aviso cuando un producto se agota (stock llega a 0).
+create or replace function tg_notify_product_out() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  perform tg_send(
+    '⚠️ Producto agotado' || E'\n'
+    || new.name || ' (' || new.cat || ')' || E'\n'
+    || 'En la página ya aparece como "Agotado". Repón stock cuando puedas.'
+  );
+  return new;
+end $$;
+
+drop trigger if exists products_tg_notify_out on products;
+create trigger products_tg_notify_out
+  after update on products
+  for each row
+  when (old.stock > 0 and new.stock = 0)
+  execute function tg_notify_product_out();
+
+-- ───── Resumen mañanero: agenda del día por Telegram (pg_cron) ──────
+create extension if not exists pg_cron;
+
+create or replace function tg_daily_summary() returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  hoy date := (now() at time zone 'America/Havana')::date;
+  n int; lineas text;
+begin
+  select count(*),
+         string_agg(
+           to_char(a.time, 'HH24:MI') || ' · ' || coalesce(c.name, 'Clienta')
+           || ' — ' || coalesce(s.name, 'Servicio')
+           || coalesce(' (' || st.name || ')', '')
+           || case when a.status = 'pending' then ' ⏳' else '' end,
+           E'\n' order by a.time)
+    into n, lineas
+  from appointments a
+  left join clients  c  on c.id  = a.client_id
+  left join services s  on s.id  = a.service_id
+  left join staff    st on st.id = a.staff_id
+  where a.date = hoy and a.status in ('pending', 'confirmed');
+
+  if n = 0 then
+    perform tg_send('🌸 ¡Buenos días! Hoy ' || to_char(hoy, 'DD/MM') || ' no hay citas en la agenda.');
+  else
+    perform tg_send('📋 ¡Buenos días! Citas de hoy ' || to_char(hoy, 'DD/MM') || ' (' || n || '):'
+      || E'\n' || lineas || E'\n' || '(⏳ = pendiente de confirmar)');
+  end if;
+end $$;
+
+revoke execute on function tg_daily_summary() from anon, authenticated;
+
+-- 11:00 UTC ≈ 7:00 AM en Cuba (horario de verano; en invierno serían las 6:00).
+-- cron.schedule es idempotente por nombre: re-correr esto solo actualiza el job.
+select cron.schedule('mj_resumen_manana', '0 11 * * *', $$select tg_daily_summary()$$);
 
 -- ───── Seed: un admin inicial ───────────────────────────────────────
 -- IMPORTANTE: cambia este PIN después de crear todo

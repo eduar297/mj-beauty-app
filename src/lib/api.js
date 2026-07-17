@@ -52,13 +52,17 @@ export const api_staff = {
 };
 
 // ─── CLIENTS ─────────────────────────────────────────────────────────
-// Normaliza el teléfono para comparaciones consistentes (acepta tipeo libre).
-const normalizePhone = (p) => (p || '').replace(/[\s\-().]/g, '').trim();
+// Normaliza el teléfono a SOLO dígitos para comparaciones consistentes.
+// (con "+"/espacios, "+53 5 4208213" y "53542 08213" nunca coincidirían)
+const normalizePhone = (p) => (p || '').replace(/\D/g, '');
+// Normaliza el phone de un payload solo si viene incluido.
+const withNormalizedPhone = (d) =>
+  ('phone' in d ? { ...d, phone: normalizePhone(d.phone) || null } : d);
 
 export const api_clients = {
   list: () => supabase.from('clients').select('*').order('name'),
-  create: (data) => supabase.from('clients').insert(data).select().single(),
-  update: (id, data) => supabase.from('clients').update(data).eq('id', id).select().single(),
+  create: (data) => supabase.from('clients').insert(withNormalizedPhone(data)).select().single(),
+  update: (id, data) => supabase.from('clients').update(withNormalizedPhone(data)).eq('id', id).select().single(),
   remove: (id) => supabase.from('clients').delete().eq('id', id),
 
   // Lookup público — solo expone id+name (privacidad: el teléfono lo tipea cualquiera).
@@ -233,12 +237,15 @@ export const api_products = {
 // ─── REVIEWS (reseñas públicas de clientas) ──────────────────────────
 export const api_reviews = {
   // Landing: solo reseñas visibles, las más recientes primero.
+  // Solo columnas públicas — el teléfono jamás viaja a la página pública.
   listPublic: (limit = 60) =>
-    supabase.from('reviews').select('*').eq('approved', true)
+    supabase.from('reviews').select('id,name,rating,comment,approved,created_at')
+      .eq('approved', true)
       .order('created_at', { ascending: false }).limit(limit),
-  // Dashboard: todas (incluye ocultas) para moderación.
+  // Dashboard: todas (incluye ocultas) con los datos de la clienta linkeada.
   listAll: () =>
-    supabase.from('reviews').select('*').order('created_at', { ascending: false }),
+    supabase.from('reviews').select('*, clients(name,status,visits)')
+      .order('created_at', { ascending: false }),
   create: (data) => supabase.from('reviews').insert(data).select().single(),
   setApproved: (id, approved) =>
     supabase.from('reviews').update({ approved }).eq('id', id).select().single(),
