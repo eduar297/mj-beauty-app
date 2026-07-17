@@ -58,6 +58,42 @@ export const CAT_ICONS = { 'Uñas': 'nail', 'Pedicura': 'foot', 'Pelo': 'hair', 
 export const PROD_CAT_COLORS = { 'Uñas': '#c9a96e', 'Piel': '#a8c4c0', 'Cabello': '#d4a5a0', 'Maquillaje': '#b8a0c4', 'Accesorios': '#c4b8a0', 'Otros': '#8a6f4a' };
 export const PROD_CAT_ICONS = { 'Uñas': 'nail', 'Piel': 'face', 'Cabello': 'hair', 'Maquillaje': 'sparkle', 'Accesorios': 'star', 'Otros': 'bag' };
 
+// Fila de 5 estrellas. Solo lectura por defecto; con onChange se vuelve
+// un selector clickeable (para el formulario de reseñas).
+const STAR_PATH = "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z";
+
+export function Stars({ value = 0, size = 15, onChange = null }) {
+  const star = (i) => {
+    const filled = i <= Math.round(value);
+    return (
+      <svg width={size} height={size} viewBox="0 0 24 24"
+        fill={filled ? 'var(--gold)' : 'none'}
+        stroke={filled ? 'var(--gold)' : 'var(--text-muted)'}
+        strokeWidth="1.5" strokeLinejoin="round" aria-hidden="true">
+        <path d={STAR_PATH} />
+      </svg>
+    );
+  };
+  if (!onChange) {
+    return (
+      <div className="inline-flex items-center gap-0.5" role="img" aria-label={`${value} de 5 estrellas`}>
+        {[1, 2, 3, 4, 5].map(i => <span key={i}>{star(i)}</span>)}
+      </div>
+    );
+  }
+  return (
+    <div className="inline-flex items-center gap-1">
+      {[1, 2, 3, 4, 5].map(i => (
+        <button key={i} type="button" onClick={() => onChange(i)}
+          aria-label={`${i} estrella${i > 1 ? 's' : ''}`} aria-pressed={i <= value}
+          className="cursor-pointer p-0.5 hover:scale-110 motion-reduce:transform-none transition-transform">
+          {star(i)}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function StatusBadge({ status }) {
   const map = {
     confirmed: { label: 'Confirmada', cls: 'bg-green-500/15 text-green-500' },

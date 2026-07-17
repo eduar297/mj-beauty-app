@@ -230,6 +230,22 @@ export const api_products = {
   },
 };
 
+// ─── REVIEWS (reseñas públicas de clientas) ──────────────────────────
+export const api_reviews = {
+  // Landing: solo reseñas visibles, las más recientes primero.
+  listPublic: (limit = 60) =>
+    supabase.from('reviews').select('*').eq('approved', true)
+      .order('created_at', { ascending: false }).limit(limit),
+  // Dashboard: todas (incluye ocultas) para moderación.
+  listAll: () =>
+    supabase.from('reviews').select('*').order('created_at', { ascending: false }),
+  create: (data) => supabase.from('reviews').insert(data).select().single(),
+  setApproved: (id, approved) =>
+    supabase.from('reviews').update({ approved }).eq('id', id).select().single(),
+  // Delete real (no soft): una reseña spam no aporta nada guardada.
+  remove: (id) => supabase.from('reviews').delete().eq('id', id),
+};
+
 // ─── APPOINTMENTS ────────────────────────────────────────────────────
 // Recolecta destinatarios para una notificación de cita:
 // siempre todas las admins activas + la empleada asignada (si existe y no es admin).

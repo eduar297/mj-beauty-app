@@ -1,9 +1,9 @@
 import { useNavigate, Link } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Icon, Modal, GoldDivider, BeforeAfterPair, PhotoTile, Lightbox, photosToSlides } from '../components/ui.jsx';
+import { Icon, Modal, GoldDivider, BeforeAfterPair, PhotoTile, Lightbox, photosToSlides, Stars, Avatar, Field, Input, Textarea, Btn } from '../components/ui.jsx';
 import PublicBookingForm from '../components/PublicBookingForm.jsx';
 import ProductCard from '../components/ProductCard.jsx';
-import { api_service_photos, api_settings, api_products } from '../lib/api';
+import { api_service_photos, api_settings, api_products, api_reviews } from '../lib/api';
 
 export default function Landing() {
   const nav = useNavigate();
@@ -12,13 +12,20 @@ export default function Landing() {
   const [settings, setSettings] = useState(null);
   const [galleryPhotos, setGalleryPhotos] = useState([]);
   const [products, setProducts] = useState([]);
+  const [reviews, setReviews] = useState([]);
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [lightbox, setLightbox] = useState(null); // { slides, index }
 
   useEffect(() => {
     api_settings.get().then(({ data }) => setSettings(data || {}));
     api_service_photos.listForLanding(8).then(({ data }) => setGalleryPhotos(data || []));
     api_products.listFeatured(8).then(({ data }) => setProducts(data || []));
+    api_reviews.listPublic(60).then(({ data }) => setReviews(data || []));
   }, []);
+
+  const avgRating = reviews.length
+    ? (reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)
+    : null;
 
   const openLightboxAt = (photoId) => {
     const { slides, indexFor } = photosToSlides(galleryPhotos);
@@ -48,6 +55,7 @@ export default function Landing() {
           <Link to="/galeria"  className="hover:text-gold transition-colors focus-visible:outline-none focus-visible:text-gold">Galería</Link>
           {products.length > 0 && <a href="#productos" className="hover:text-gold transition-colors focus-visible:outline-none focus-visible:text-gold">Productos</a>}
           <a href="#nosotras"  className="hover:text-gold transition-colors focus-visible:outline-none focus-visible:text-gold">Nosotras</a>
+          <a href="#resenas"   className="hover:text-gold transition-colors focus-visible:outline-none focus-visible:text-gold">Reseñas</a>
           <a href="#contacto"  className="hover:text-gold transition-colors focus-visible:outline-none focus-visible:text-gold">Contacto</a>
         </div>
         <div className="hidden md:flex gap-2.5">
@@ -65,6 +73,7 @@ export default function Landing() {
           <Link to="/galeria"  onClick={() => setMenuOpen(false)} className="py-3 px-2 border-b border-border">Galería</Link>
           {products.length > 0 && <a href="#productos" onClick={() => setMenuOpen(false)} className="py-3 px-2 border-b border-border">Productos</a>}
           <a href="#nosotras"  onClick={() => setMenuOpen(false)} className="py-3 px-2 border-b border-border">Nosotras</a>
+          <a href="#resenas"   onClick={() => setMenuOpen(false)} className="py-3 px-2 border-b border-border">Reseñas</a>
           <a href="#contacto"  onClick={() => setMenuOpen(false)} className="py-3 px-2 border-b border-border">Contacto</a>
           <div className="flex gap-2 mt-3">
             <button onClick={() => { setMenuOpen(false); nav('/login'); }} className="flex-1 py-2.5 rounded-lg border border-border-strong text-text-secondary cursor-pointer">Gestión</button>
@@ -199,6 +208,38 @@ export default function Landing() {
           </div>
         </section>
 
+        <section id="resenas" className="px-4 py-20 sm:px-10 scroll-mt-20">
+          <div className="max-w-5xl mx-auto">
+            <div className="text-center mb-10">
+              <div className="text-[11px] uppercase tracking-widest text-gold mb-3">Lo que dicen de nosotras</div>
+              <h2 className="font-serif font-semibold mb-2" style={{ fontSize: 'clamp(28px,5vw,40px)' }}>Reseñas de Clientas</h2>
+              {avgRating ? (
+                <div className="flex items-center justify-center gap-2.5 mt-3 flex-wrap">
+                  <Stars value={Number(avgRating)} size={18} />
+                  <span className="text-sm text-text-secondary">
+                    <span className="text-gold font-bold">{avgRating}</span> · {reviews.length} reseña{reviews.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+              ) : (
+                <p className="text-text-muted text-sm max-w-md mx-auto">Sé la primera en contarnos tu experiencia.</p>
+              )}
+            </div>
+
+            {reviews.length > 0 && (
+              <div className="grid gap-4 justify-center" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 340px))' }}>
+                {reviews.slice(0, 6).map(r => <ReviewCard key={r.id} r={r} />)}
+              </div>
+            )}
+
+            <div className="text-center mt-8">
+              <button onClick={() => setReviewOpen(true)}
+                className="inline-block px-7 py-3 border border-border-strong rounded-lg text-gold font-semibold hover:bg-gold-dim transition cursor-pointer">
+                ⭐ Deja tu reseña
+              </button>
+            </div>
+          </div>
+        </section>
+
         <section id="contacto" className="px-4 py-20 sm:px-10 bg-bg-card scroll-mt-20">
           <div className="max-w-5xl mx-auto">
             <div className="text-center mb-10">
@@ -285,8 +326,100 @@ export default function Landing() {
         <PublicBookingForm onClose={() => setBookingOpen(false)} />
       </Modal>
 
+      <Modal open={reviewOpen} onClose={() => setReviewOpen(false)} title="Deja tu reseña">
+        <ReviewForm
+          onCreated={(r) => setReviews(prev => [r, ...prev])}
+          onClose={() => setReviewOpen(false)}
+        />
+      </Modal>
+
       <Lightbox open={!!lightbox} onClose={() => setLightbox(null)} slides={lightbox?.slides || []} index={lightbox?.index || 0} />
     </div>
+  );
+}
+
+function ReviewCard({ r }) {
+  const initials = (r.name || '?').trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
+  return (
+    <div className="bg-bg-card border border-border rounded-2xl p-5 flex flex-col gap-3 text-left">
+      <Stars value={r.rating} size={14} />
+      {r.comment && (
+        <p className="text-sm text-text-secondary leading-relaxed font-light whitespace-pre-line flex-1">“{r.comment}”</p>
+      )}
+      <div className="flex items-center gap-2.5 mt-auto pt-1">
+        <Avatar initials={initials} size={32} />
+        <div className="min-w-0">
+          <div className="text-sm font-semibold truncate">{r.name}</div>
+          <div className="text-[11px] text-text-muted">
+            {new Date(r.created_at).toLocaleDateString('es-CO', { month: 'long', year: 'numeric' })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ReviewForm({ onCreated, onClose }) {
+  const [name, setName] = useState('');
+  const [rating, setRating] = useState(5);
+  const [comment, setComment] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState(null);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!name.trim() || saving) return;
+    setSaving(true);
+    setError(null);
+    const { data, error: err } = await api_reviews.create({
+      name: name.trim(),
+      rating,
+      comment: comment.trim() || null,
+    });
+    setSaving(false);
+    if (err) {
+      setError('No se pudo enviar la reseña. Inténtalo de nuevo en un momento.');
+      return;
+    }
+    setSent(true);
+    if (data) onCreated?.(data);
+  };
+
+  if (sent) {
+    return (
+      <div className="text-center py-6">
+        <div className="w-14 h-14 mx-auto rounded-full bg-gold-dim border border-border-strong grid place-items-center text-gold mb-4">
+          <Icon name="check" size={26} />
+        </div>
+        <h4 className="font-serif text-lg font-semibold mb-1">¡Gracias por tu reseña!</h4>
+        <p className="text-sm text-text-muted mb-5">Tu opinión ayuda a otras clientas a conocernos.</p>
+        <Btn onClick={onClose}>Cerrar</Btn>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={submit}>
+      <Field label="Tu nombre">
+        <Input value={name} onChange={e => setName(e.target.value)} placeholder="¿Cómo te llamas?" />
+      </Field>
+      <Field label="Calificación">
+        <div className="bg-bg-card border border-border rounded-lg px-3 py-2.5 flex items-center gap-3">
+          <Stars value={rating} size={26} onChange={setRating} />
+          <span className="text-sm text-text-muted">{rating}/5</span>
+        </div>
+      </Field>
+      <Field label="Comentario (opcional)">
+        <Textarea value={comment} onChange={e => setComment(e.target.value)} rows={3}
+          placeholder="Cuéntanos cómo fue tu experiencia…" />
+      </Field>
+      {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
+      <div className="flex justify-end gap-2 mt-1">
+        <Btn variant="ghost" onClick={onClose}>Cancelar</Btn>
+        <Btn type="submit" loading={saving} disabled={!name.trim()}>Enviar reseña</Btn>
+      </div>
+    </form>
   );
 }
 

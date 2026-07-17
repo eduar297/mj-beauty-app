@@ -353,6 +353,104 @@ drop policy if exists "products_storage_delete" on storage.objects;
 create policy "products_storage_delete" on storage.objects for delete
 using (bucket_id = 'products');
 
+-- ───── Tabla: reviews (reseñas públicas de clientas) ────────────────
+create table if not exists reviews (
+  id uuid primary key default uuid_generate_v4(),
+  name text not null,
+  rating int not null check (rating between 1 and 5),
+  comment text,
+  approved boolean default true,            -- el admin puede ocultar reseñas
+  created_at timestamptz default now()
+);
+create index if not exists reviews_created_idx on reviews(created_at desc);
+
+alter table reviews enable row level security;
+drop policy if exists "reviews_public_read" on reviews;
+create policy "reviews_public_read" on reviews for select using (true);
+drop policy if exists "reviews_anon_all" on reviews;
+create policy "reviews_anon_all" on reviews for all using (true);
+
+-- ───── Telegram: avisos de reservas y reseñas ───────────────────────
+-- Config privada (token del bot + chat destino). RLS activo SIN políticas:
+-- la anon key NO puede leer esta tabla; solo las funciones security definer.
+create extension if not exists pg_net;
+
+create table if not exists notify_config (
+  id boolean primary key default true check (id),   -- fila única
+  telegram_token text,
+  telegram_chat_id text
+);
+alter table notify_config enable row level security;
+insert into notify_config (id) values (true) on conflict do nothing;
+
+-- El token se configura UNA vez, aparte (no lo guardes en git):
+--   update notify_config set telegram_token = '<TOKEN>', telegram_chat_id = '<CHAT_ID>';
+-- telegram_chat_id admite varios destinatarios separados por coma.
+
+-- Envía un mensaje a cada chat configurado. Si falta config o falla la red,
+-- no hace nada (jamás debe romper el insert que lo disparó).
+create or replace function tg_send(msg text) returns void
+language plpgsql security definer set search_path = public as $$
+declare cfg record; cid text;
+begin
+  select telegram_token, telegram_chat_id into cfg from notify_config where id;
+  if cfg.telegram_token is null or cfg.telegram_chat_id is null then return; end if;
+  foreach cid in array string_to_array(cfg.telegram_chat_id, ',') loop
+    perform net.http_post(
+      url  := 'https://api.telegram.org/bot' || cfg.telegram_token || '/sendMessage',
+      body := jsonb_build_object('chat_id', trim(cid), 'text', msg)
+    );
+  end loop;
+exception when others then null;
+end $$;
+
+-- Que la anon key no pueda invocarla vía PostgREST (/rpc/tg_send).
+revoke execute on function tg_send(text) from anon, authenticated;
+
+create or replace function tg_notify_appointment() returns trigger
+language plpgsql security definer set search_path = public as $$
+declare
+  v_client text; v_phone text; v_service text; v_staff text; v_pref text; msg text;
+begin
+  select name, phone into v_client, v_phone from clients where id = new.client_id;
+  select name into v_service from services where id = new.service_id;
+  select name into v_staff from staff where id = new.staff_id;
+  select name into v_pref from staff where id = new.preferred_staff_id;
+  msg := '📅 Nueva reserva' || E'\n'
+      || 'Clienta: ' || coalesce(v_client, 'Sin nombre')
+      || coalesce(' (+' || nullif(v_phone, '') || ')', '') || E'\n'
+      || 'Servicio: ' || coalesce(v_service, '—') || E'\n'
+      || 'Fecha: ' || to_char(new.date, 'DD/MM/YYYY') || ' a las ' || to_char(new.time, 'HH24:MI');
+  if v_staff is not null then
+    msg := msg || E'\n' || 'Empleada: ' || v_staff;
+  elsif v_pref is not null then
+    msg := msg || E'\n' || 'Prefiere a: ' || v_pref;
+  end if;
+  perform tg_send(msg);
+  return new;
+end $$;
+
+drop trigger if exists appointments_tg_notify on appointments;
+create trigger appointments_tg_notify
+  after insert on appointments
+  for each row execute function tg_notify_appointment();
+
+create or replace function tg_notify_review() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  perform tg_send(
+    '⭐ Nueva reseña (' || new.rating || '/5)' || E'\n'
+    || 'De: ' || new.name
+    || coalesce(E'\n' || '"' || nullif(trim(new.comment), '') || '"', '')
+  );
+  return new;
+end $$;
+
+drop trigger if exists reviews_tg_notify on reviews;
+create trigger reviews_tg_notify
+  after insert on reviews
+  for each row execute function tg_notify_review();
+
 -- ───── Seed: un admin inicial ───────────────────────────────────────
 -- IMPORTANTE: cambia este PIN después de crear todo
 -- Solo inserta si todavía no existe ningún admin (el PIN ya no es UNIQUE).
