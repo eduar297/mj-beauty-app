@@ -418,6 +418,27 @@ end $$;
 -- Que la anon key no pueda invocarla vía PostgREST (/rpc/tg_send).
 revoke execute on function tg_send(text) from anon, authenticated;
 
+-- Completa el código de país si falta (móviles cubanos: 8 dígitos, empiezan
+-- con 5). Así Telegram muestra el número tocable y el link de WhatsApp abre
+-- el chat directo.
+create or replace function tg_full_phone(p text) returns text
+language sql immutable as $$
+  select case
+    when p is null or p = '' then null
+    when length(p) = 8 and p like '5%' then '53' || p
+    else p
+  end
+$$;
+
+-- Línea de contacto para los mensajes: "📞 +53... · https://wa.me/53..."
+create or replace function tg_contact_line(p text) returns text
+language sql immutable as $$
+  select coalesce(
+    E'\n' || '📞 +' || tg_full_phone(p) || ' · https://wa.me/' || tg_full_phone(p),
+    ''
+  )
+$$;
+
 create or replace function tg_notify_appointment() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare
@@ -429,7 +450,7 @@ begin
   select name into v_pref from staff where id = new.preferred_staff_id;
   msg := '📅 Nueva reserva' || E'\n'
       || 'Clienta: ' || coalesce(v_client, 'Sin nombre')
-      || coalesce(' (' || nullif(v_phone, '') || ')', '') || E'\n'
+      || tg_contact_line(nullif(v_phone, '')) || E'\n'
       || 'Servicio: ' || coalesce(v_service, '—') || E'\n'
       || 'Fecha: ' || to_char(new.date, 'DD/MM/YYYY') || ' a las ' || to_char(new.time, 'HH24:MI');
   if v_staff is not null then
@@ -461,7 +482,7 @@ begin
   perform tg_send(
     '⭐ Nueva reseña (' || new.rating || '/5)' || E'\n'
     || 'De: ' || new.name
-    || coalesce(' (' || nullif(new.phone, '') || ')', '')
+    || tg_contact_line(nullif(new.phone, ''))
     || v_extra
     || coalesce(E'\n' || '"' || nullif(trim(new.comment), '') || '"', '')
   );
@@ -481,7 +502,7 @@ begin
   perform tg_send(
     '✏️ Reseña editada (' || new.rating || '/5)' || E'\n'
     || 'De: ' || new.name
-    || coalesce(' (' || nullif(new.phone, '') || ')', '')
+    || tg_contact_line(nullif(new.phone, ''))
     || coalesce(E'\n' || '"' || nullif(trim(new.comment), '') || '"', '')
   );
   return new;
@@ -505,7 +526,7 @@ begin
   select name into v_service from services where id = new.service_id;
   msg := '❌ Cita cancelada' || E'\n'
       || 'Clienta: ' || coalesce(v_client, 'Sin nombre')
-      || coalesce(' (' || nullif(v_phone, '') || ')', '') || E'\n'
+      || tg_contact_line(nullif(v_phone, '')) || E'\n'
       || 'Servicio: ' || coalesce(v_service, '—') || E'\n'
       || 'Era: ' || to_char(new.date, 'DD/MM/YYYY') || ' a las ' || to_char(new.time, 'HH24:MI');
   perform tg_send(msg);
