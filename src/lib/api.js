@@ -246,7 +246,15 @@ export const api_reviews = {
   listAll: () =>
     supabase.from('reviews').select('*, clients(name,status,visits)')
       .order('created_at', { ascending: false }),
+  // ¿Este teléfono ya dejó reseña? (la más reciente) — para editar en vez de duplicar.
+  findByPhone: (phone) => {
+    const p = (phone || '').replace(/\D/g, '');
+    if (p.length < 7) return Promise.resolve({ data: null });
+    return supabase.from('reviews').select('id,name,rating,comment,approved,created_at')
+      .eq('phone', p).order('created_at', { ascending: false }).limit(1).maybeSingle();
+  },
   create: (data) => supabase.from('reviews').insert(data).select().single(),
+  update: (id, data) => supabase.from('reviews').update(data).eq('id', id).select().single(),
   setApproved: (id, approved) =>
     supabase.from('reviews').update({ approved }).eq('id', id).select().single(),
   // Delete real (no soft): una reseña spam no aporta nada guardada.

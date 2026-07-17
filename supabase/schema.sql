@@ -473,6 +473,29 @@ create trigger reviews_tg_notify
   after insert on reviews
   for each row execute function tg_notify_review();
 
+-- Aviso cuando la clienta edita su reseña (mismo teléfono → edita, no duplica).
+-- El WHEN evita dispararlo cuando el admin solo oculta/muestra (approved).
+create or replace function tg_notify_review_updated() returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  perform tg_send(
+    '✏️ Reseña editada (' || new.rating || '/5)' || E'\n'
+    || 'De: ' || new.name
+    || coalesce(' (' || nullif(new.phone, '') || ')', '')
+    || coalesce(E'\n' || '"' || nullif(trim(new.comment), '') || '"', '')
+  );
+  return new;
+end $$;
+
+drop trigger if exists reviews_tg_notify_update on reviews;
+create trigger reviews_tg_notify_update
+  after update on reviews
+  for each row
+  when (old.rating is distinct from new.rating
+     or old.comment is distinct from new.comment
+     or old.name is distinct from new.name)
+  execute function tg_notify_review_updated();
+
 -- Aviso cuando una cita pasa a cancelada (desde el dashboard o donde sea).
 create or replace function tg_notify_appointment_cancelled() returns trigger
 language plpgsql security definer set search_path = public as $$

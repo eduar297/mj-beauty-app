@@ -328,7 +328,13 @@ export default function Landing() {
 
       <Modal open={reviewOpen} onClose={() => setReviewOpen(false)} title="Deja tu reseña">
         <ReviewForm
-          onCreated={(r) => setReviews(prev => [r, ...prev])}
+          onCreated={(r) => setReviews(prev => {
+            // Si estaba oculta por el admin, no la mostramos aunque la editen.
+            if (r.approved === false) return prev.filter(x => x.id !== r.id);
+            return prev.some(x => x.id === r.id)
+              ? prev.map(x => x.id === r.id ? r : x)
+              : [r, ...prev];
+          })}
           onClose={() => setReviewOpen(false)}
         />
       </Modal>
@@ -367,6 +373,7 @@ function ReviewForm({ onCreated, onClose }) {
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
   const [existingClient, setExistingClient] = useState(null); // {id, name, status}
+  const [existingReview, setExistingReview] = useState(null); // reseña previa de este teléfono → modo edición
   const [lookupBusy, setLookupBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [sent, setSent] = useState(false);
@@ -377,17 +384,23 @@ function ReviewForm({ onCreated, onClose }) {
   useEffect(() => {
     if (lookupTimer.current) clearTimeout(lookupTimer.current);
     const digits = phone.replace(/\D/g, '');
-    if (digits.length < 7) { setExistingClient(null); return; }
+    if (digits.length < 7) { setExistingClient(null); setExistingReview(null); return; }
     lookupTimer.current = setTimeout(async () => {
       setLookupBusy(true);
       try {
-        const { data } = await api_clients.findByPhone(phone);
-        if (data) {
-          setExistingClient(data);
-          setName(prev => prev.trim() ? prev : (data.name || ''));
-        } else {
-          setExistingClient(null);
+        // Busca a la clienta Y su reseña previa (si ya dejó una, se edita).
+        const [{ data: client }, { data: review }] = await Promise.all([
+          api_clients.findByPhone(phone),
+          api_reviews.findByPhone(phone),
+        ]);
+        setExistingClient(client || null);
+        setExistingReview(review || null);
+        if (review) {
+          setRating(review.rating);
+          setComment(review.comment || '');
         }
+        const knownName = review?.name || client?.name || '';
+        if (knownName) setName(prev => prev.trim() ? prev : knownName);
       } finally {
         setLookupBusy(false);
       }
@@ -402,13 +415,17 @@ function ReviewForm({ onCreated, onClose }) {
     if (!name.trim() || !phoneOk || saving) return;
     setSaving(true);
     setError(null);
-    const { data, error: err } = await api_reviews.create({
+    const payload = {
       name: name.trim(),
       rating,
       comment: comment.trim() || null,
       phone: phone.replace(/\D/g, ''),
       client_id: existingClient?.id || null,
-    });
+    };
+    // Si este teléfono ya tiene reseña, se actualiza en vez de duplicar.
+    const { data, error: err } = existingReview
+      ? await api_reviews.update(existingReview.id, payload)
+      : await api_reviews.create(payload);
     setSaving(false);
     if (err) {
       setError('No se pudo enviar la reseña. Inténtalo de nuevo en un momento.');
@@ -425,7 +442,9 @@ function ReviewForm({ onCreated, onClose }) {
         <div className="w-14 h-14 mx-auto rounded-full bg-gold-dim border border-border-strong grid place-items-center text-gold mb-4">
           <Icon name="check" size={26} />
         </div>
-        <h4 className="font-serif text-lg font-semibold mb-1">¡Gracias por tu reseña!</h4>
+        <h4 className="font-serif text-lg font-semibold mb-1">
+          {existingReview ? '¡Reseña actualizada!' : '¡Gracias por tu reseña!'}
+        </h4>
         <p className="text-sm text-text-muted mb-5">Tu opinión ayuda a otras clientas a conocernos.</p>
         <Btn onClick={onClose}>Cerrar</Btn>
       </div>
@@ -445,15 +464,20 @@ function ReviewForm({ onCreated, onClose }) {
         <div className="min-w-0 truncate">
           {lookupBusy ? (
             <span className="text-text-muted">Buscando…</span>
+          ) : existingReview ? (
+            <span className="text-gold">✏️ Ya dejaste una reseña — aquí puedes editarla.</span>
           ) : existingClient ? (
             <span className="text-gold">👋 ¡Hola de nuevo, {existingClient.name}!</span>
           ) : phoneOk ? (
             <span className="text-text-muted">Tu teléfono no se muestra en la página — es solo para saber que eres tú.</span>
           ) : null}
         </div>
-        {existingClient && (
+        {(existingClient || existingReview) && (
           <button type="button"
-            onClick={() => { setPhone(''); setName(''); setExistingClient(null); }}
+            onClick={() => {
+              setPhone(''); setName(''); setExistingClient(null);
+              setExistingReview(null); setRating(5); setComment('');
+            }}
             className="text-text-muted hover:text-text-secondary underline underline-offset-2 cursor-pointer whitespace-nowrap flex-shrink-0">
             No soy yo
           </button>
@@ -476,7 +500,9 @@ function ReviewForm({ onCreated, onClose }) {
       {error && <p className="text-xs text-red-400 mb-3">{error}</p>}
       <div className="flex justify-end gap-2 mt-1">
         <Btn variant="ghost" onClick={onClose}>Cancelar</Btn>
-        <Btn type="submit" loading={saving} disabled={!name.trim() || !phoneOk}>Enviar reseña</Btn>
+        <Btn type="submit" loading={saving} disabled={!name.trim() || !phoneOk}>
+          {existingReview ? 'Guardar cambios' : 'Enviar reseña'}
+        </Btn>
       </div>
     </form>
   );
