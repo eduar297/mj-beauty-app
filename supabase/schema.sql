@@ -416,29 +416,42 @@ create table if not exists notify_config (
 alter table notify_config enable row level security;
 insert into notify_config (id) values (true) on conflict do nothing;
 
+-- URL pública del sitio (Vercel) para armar los botones del bot. Configúrala una vez:
+--   update notify_config set site_url = 'https://tu-dominio.vercel.app';
+alter table notify_config add column if not exists site_url text;
+
 -- El token se configura UNA vez, aparte (no lo guardes en git):
 --   update notify_config set telegram_token = '<TOKEN>', telegram_chat_id = '<CHAT_ID>';
 -- telegram_chat_id admite varios destinatarios separados por coma.
 
--- Envía un mensaje a cada chat configurado. Si falta config o falla la red,
--- no hace nada (jamás debe romper el insert que lo disparó).
-create or replace function tg_send(msg text) returns void
+-- Envía un mensaje a cada chat configurado, con botones opcionales (markup).
+-- Si falta config o falla la red, no hace nada (jamás debe romper el insert).
+drop function if exists tg_send(text);
+create or replace function tg_send(msg text, markup jsonb default null) returns void
 language plpgsql security definer set search_path = public as $$
-declare cfg record; cid text;
+declare cfg record; cid text; body jsonb;
 begin
   select telegram_token, telegram_chat_id into cfg from notify_config where id;
   if cfg.telegram_token is null or cfg.telegram_chat_id is null then return; end if;
   foreach cid in array string_to_array(cfg.telegram_chat_id, ',') loop
+    body := jsonb_build_object('chat_id', trim(cid), 'text', msg, 'disable_web_page_preview', true);
+    if markup is not null then body := body || jsonb_build_object('reply_markup', markup); end if;
     perform net.http_post(
       url  := 'https://api.telegram.org/bot' || cfg.telegram_token || '/sendMessage',
-      body := jsonb_build_object('chat_id', trim(cid), 'text', msg)
+      body := body
     );
   end loop;
 exception when others then null;
 end $$;
 
 -- Que la anon key no pueda invocarla vía PostgREST (/rpc/tg_send).
-revoke execute on function tg_send(text) from anon, authenticated;
+revoke execute on function tg_send(text, jsonb) from anon, authenticated;
+
+-- Base del sitio (sin barra final) para armar los links de los botones.
+create or replace function tg_site_url() returns text
+language sql security definer set search_path = public as $$
+  select rtrim(nullif(site_url, ''), '/') from notify_config where id
+$$;
 
 -- Completa el código de país si falta (móviles cubanos: 8 dígitos, empiezan
 -- con 5). Así Telegram muestra el número tocable y el link de WhatsApp abre
@@ -465,6 +478,7 @@ create or replace function tg_notify_appointment() returns trigger
 language plpgsql security definer set search_path = public as $$
 declare
   v_client text; v_phone text; v_service text; v_staff text; v_pref text; msg text;
+  v_base text; v_markup jsonb;
 begin
   select name, phone into v_client, v_phone from clients where id = new.client_id;
   -- Todos los servicios de la cita (multi-servicio), en el orden elegido.
@@ -485,7 +499,15 @@ begin
   elsif v_pref is not null then
     msg := msg || E'\n' || 'Prefiere a: ' || v_pref;
   end if;
-  perform tg_send(msg);
+  -- Botones: abrir la cita (lista para confirmar) y la gestión.
+  v_base := tg_site_url();
+  if v_base is not null then
+    v_markup := jsonb_build_object('inline_keyboard', jsonb_build_array(jsonb_build_array(
+      jsonb_build_object('text', '✅ Confirmar cita', 'url', v_base || '/dashboard/agenda?focus=' || new.id),
+      jsonb_build_object('text', '🌐 Gestión',        'url', v_base || '/dashboard')
+    )));
+  end if;
+  perform tg_send(msg, v_markup);
   return new;
 end $$;
 
@@ -496,7 +518,7 @@ create trigger appointments_tg_notify
 
 create or replace function tg_notify_review() returns trigger
 language plpgsql security definer set search_path = public as $$
-declare v_status text; v_visits int; v_extra text := '';
+declare v_status text; v_visits int; v_extra text := ''; v_base text; v_markup jsonb;
 begin
   if new.client_id is not null then
     select status, visits into v_status, v_visits from clients where id = new.client_id;
@@ -506,12 +528,19 @@ begin
         || coalesce(' · ' || v_visits || ' visitas', '');
     end if;
   end if;
+  v_base := tg_site_url();
+  if v_base is not null then
+    v_markup := jsonb_build_object('inline_keyboard', jsonb_build_array(jsonb_build_array(
+      jsonb_build_object('text', '⭐ Ver reseñas', 'url', v_base || '/dashboard/resenas')
+    )));
+  end if;
   perform tg_send(
     '⭐ Nueva reseña (' || new.rating || '/5)' || E'\n'
     || 'De: ' || new.name
     || tg_contact_line(nullif(new.phone, ''))
     || v_extra
-    || coalesce(E'\n' || '"' || nullif(trim(new.comment), '') || '"', '')
+    || coalesce(E'\n' || '"' || nullif(trim(new.comment), '') || '"', ''),
+    v_markup
   );
   return new;
 end $$;
@@ -597,7 +626,7 @@ create or replace function tg_daily_summary() returns void
 language plpgsql security definer set search_path = public as $$
 declare
   hoy date := (now() at time zone 'America/Havana')::date;
-  n int; lineas text;
+  n int; lineas text; v_base text; v_markup jsonb;
 begin
   select count(*),
          string_agg(
@@ -613,11 +642,18 @@ begin
   left join staff    st on st.id = a.staff_id
   where a.date = hoy and a.status in ('pending', 'confirmed');
 
+  v_base := tg_site_url();
+  if v_base is not null then
+    v_markup := jsonb_build_object('inline_keyboard', jsonb_build_array(jsonb_build_array(
+      jsonb_build_object('text', '📅 Ver agenda', 'url', v_base || '/dashboard/agenda')
+    )));
+  end if;
+
   if n = 0 then
-    perform tg_send('🌸 ¡Buenos días! Hoy ' || to_char(hoy, 'DD/MM') || ' no hay citas en la agenda.');
+    perform tg_send('🌸 ¡Buenos días! Hoy ' || to_char(hoy, 'DD/MM') || ' no hay citas en la agenda.', v_markup);
   else
     perform tg_send('📋 ¡Buenos días! Citas de hoy ' || to_char(hoy, 'DD/MM') || ' (' || n || '):'
-      || E'\n' || lineas || E'\n' || '(⏳ = pendiente de confirmar)');
+      || E'\n' || lineas || E'\n' || '(⏳ = pendiente de confirmar)', v_markup);
   end if;
 end $$;
 
