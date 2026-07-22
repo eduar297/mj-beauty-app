@@ -242,7 +242,9 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
 
           <Field label="Elige una hora">
             {slots.length === 0 ? (
-              <div className="text-xs text-text-muted py-2">Elige una fecha…</div>
+              <div className="text-xs text-text-muted bg-bg-elevated border border-border rounded-lg px-3 py-3">
+                No quedan horarios para ese día — prueba con otra fecha.
+              </div>
             ) : (
               <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5 max-h-48 overflow-y-auto py-1">
                 {slots.map(s => (

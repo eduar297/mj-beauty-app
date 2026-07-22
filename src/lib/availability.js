@@ -161,9 +161,18 @@ export function computeAllSlots({ date, staff = [], stepMinutes = 30 }) {
   // para que SIEMPRE aparezcan horarios (incluye domingos).
   if (!windows.length) windows.push([9 * 60, 18 * 60]);
 
+  // Si la fecha es HOY, no ofrecer horas que ya pasaron.
+  const now = new Date();
+  const p = (n) => String(n).padStart(2, '0');
+  const localToday = `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
+  const minAllowed = date === localToday ? now.getHours() * 60 + now.getMinutes() : -1;
+
   const set = new Set();
   for (const [ws, we] of windows) {
-    for (let t = ws; t < we; t += stepMinutes) set.add(t);
+    for (let t = ws; t < we; t += stepMinutes) {
+      if (t <= minAllowed) continue; // hora ya pasada hoy
+      set.add(t);
+    }
   }
   return Array.from(set).sort((a, b) => a - b).map(fromMin);
 }

@@ -2,10 +2,9 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Header } from '../Dashboard.jsx';
 import { Icon, Btn, Modal, Field, Input, Select, ListLoading } from '../../components/ui.jsx';
-import { api_appointments, api_services, api_staff, api_clients } from '../../lib/api';
+import { api_appointments, api_services, api_clients } from '../../lib/api';
 import ServicePicker from '../../components/ServicePicker.jsx';
 import { fmtDuration } from '../../lib/duration';
-import { useAuth } from '../../hooks/useAuth.jsx';
 
 // ── Constantes ────────────────────────────────────────────────────────
 // Math limpio: 1 min = 1 px (day) / 0.8 px (week).
@@ -46,8 +45,6 @@ function computeHourRange(appts) {
 
 // ── Componente principal ──────────────────────────────────────────────
 export default function Agenda() {
-  const { user } = useAuth();
-  const isAdmin = user?.role === 'admin';
   const [searchParams, setSearchParams] = useSearchParams();
   const focusId = searchParams.get('focus');
   // En móvil arrancamos en Día porque Semana aplasta 7 columnas en <400px.
@@ -56,10 +53,7 @@ export default function Agenda() {
   const [appts, setAppts] = useState(null);
   const [editing, setEditing] = useState(null);
   const [services, setServices] = useState([]);
-  const [staff, setStaff] = useState([]);
   const [clients, setClients] = useState([]);
-  // Filtro para admin: '' = todas las empleadas, '<staff_id>' = solo esa empleada.
-  const [staffFilter, setStaffFilter] = useState('');
 
   const loadedRef = useRef({ from: '', to: '' });
 
@@ -83,7 +77,6 @@ export default function Agenda() {
     const t = new Date();
     loadWindow(toISO(addDays(t, -90)), toISO(addDays(t, 180)));
     api_services.list().then(({ data }) => setServices(data || []));
-    api_staff.list().then(({ data }) => setStaff(data || []));
     api_clients.list().then(({ data }) => setClients(data || []));
     const ch = api_appointments.subscribe(() => {
       const { from, to } = loadedRef.current;
@@ -132,14 +125,10 @@ export default function Agenda() {
 
   const filtered = useMemo(() => {
     if (appts === null) return null;
-    return appts.filter(a => {
-      // Empleada solo ve las suyas; admin ve todo (con opción de filtrar abajo).
-      if (user?.role === 'empleada' && a.staff_id !== user.id) return false;
-      // Filtro manual del admin por empleada (solo aplica si está activo).
-      if (isAdmin && staffFilter && a.staff_id !== staffFilter) return false;
-      return a.date >= visibleRange.from && a.date <= visibleRange.to;
-    });
-  }, [appts, user, isAdmin, staffFilter, visibleRange.from, visibleRange.to]);
+    // Todos (admin y empleadas) ven todas las citas — el trabajo ya no se
+    // asigna por empleada, así que no se filtra por trabajadora.
+    return appts.filter(a => a.date >= visibleRange.from && a.date <= visibleRange.to);
+  }, [appts, visibleRange.from, visibleRange.to]);
 
   // Conteo de pendientes en el rango visible (badge para llamar la atención).
   const pendingCount = useMemo(() => (filtered || []).filter(a => a.status === 'pending').length, [filtered]);
@@ -200,36 +189,12 @@ export default function Agenda() {
         <ViewSwitcher view={view} onChange={setView} />
       </div>
 
-      {/* Filtro por empleada (solo admin) + badge de pendientes
-          En mobile: scroll horizontal sin wrap para mantener una sola fila
-          legible. En desktop: wrap normal con badge a la derecha. */}
-      {isAdmin && staff.length > 0 && (
-        <div className="-mx-4 sm:mx-0 mb-3">
-          <div className="flex items-center gap-2 overflow-x-auto sm:overflow-visible sm:flex-wrap px-4 sm:px-0 pb-1 sm:pb-0
-                          [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <span className="hidden sm:inline text-[11px] text-text-muted uppercase tracking-widest flex-shrink-0">Empleada:</span>
-            <button onClick={() => setStaffFilter('')}
-              className={`flex-shrink-0 text-xs px-3 py-1.5 rounded-full border cursor-pointer transition whitespace-nowrap ${
-                staffFilter === '' ? 'bg-gold text-[#0d0c0a] border-gold font-semibold' : 'bg-bg-card border-border text-text-muted hover:text-text-secondary hover:border-border-strong'
-              }`}>
-              Todas
-            </button>
-            {staff.map(s => (
-              <button key={s.id} onClick={() => setStaffFilter(s.id)}
-                style={staffFilter === s.id ? { background: s.color, borderColor: s.color, color: '#0d0c0a' } : {}}
-                className={`flex-shrink-0 text-xs px-3 py-1.5 rounded-full border cursor-pointer transition flex items-center gap-1.5 whitespace-nowrap ${
-                  staffFilter === s.id ? 'font-semibold' : 'bg-bg-card border-border text-text-muted hover:text-text-secondary hover:border-border-strong'
-                }`}>
-                <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: staffFilter === s.id ? '#0d0c0a' : s.color }} />
-                {s.name}
-              </button>
-            ))}
-            {pendingCount > 0 && (
-              <span className="flex-shrink-0 sm:ml-auto text-[11px] px-2.5 py-1.5 rounded-full bg-gold/15 text-gold border border-gold/40 whitespace-nowrap font-semibold">
-                {pendingCount} pendiente{pendingCount === 1 ? '' : 's'}
-              </span>
-            )}
-          </div>
+      {/* Aviso de citas pendientes por confirmar. */}
+      {pendingCount > 0 && (
+        <div className="mb-3">
+          <span className="inline-block text-[11px] px-2.5 py-1.5 rounded-full bg-gold/15 text-gold border border-gold/40 font-semibold">
+            {pendingCount} pendiente{pendingCount === 1 ? '' : 's'} por confirmar
+          </span>
         </div>
       )}
 
@@ -248,7 +213,6 @@ export default function Agenda() {
           <ApptForm
             initial={editing}
             services={services}
-            staff={staff}
             clients={clients}
             defaultDate={editing.date || toISO(anchor)}
             onSaved={() => { setEditing(null); }}
@@ -676,9 +640,9 @@ function openWhatsAppConfirmation(appt, kind) {
 }
 
 // ── Form de cita ──────────────────────────────────────────────────────
-function ApptForm({ initial, services, staff, clients, defaultDate, onSaved, onDelete }) {
+function ApptForm({ initial, services, clients, defaultDate, onSaved, onDelete }) {
   const [f, setF] = useState({
-    client_id: '', service_id: '', staff_id: '',
+    client_id: '', service_id: '',
     date: defaultDate, time: '10:00', notes: '', status: 'confirmed',
     ...initial,
   });
@@ -727,7 +691,7 @@ function ApptForm({ initial, services, staff, clients, defaultDate, onSaved, onD
         client_id: f.client_id || null,
         service_id: serviceIds[0] || null,       // principal (compat)
         service_ids: serviceIds,                  // todos los servicios
-        staff_id: f.staff_id || null,
+        staff_id: null,                           // el trabajo ya no se asigna por empleada
         date: f.date,
         time: f.time,
         duration: totalDuration || f.duration || 60,
@@ -794,10 +758,6 @@ function ApptForm({ initial, services, staff, clients, defaultDate, onSaved, onD
           </div>
         )}
       </Field>
-      <Field label="Empleada">
-        <Select value={f.staff_id || ''} onChange={e => setF({ ...f, staff_id: e.target.value })}
-          options={[{ value: '', label: 'Selecciona' }, ...staff.map(s => ({ value: s.id, label: s.name }))]} />
-      </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Fecha"><Input type="date" value={f.date} onChange={e => setF({ ...f, date: e.target.value })} /></Field>
         <Field label="Hora"><Input type="time" value={f.time} onChange={e => setF({ ...f, time: e.target.value })} /></Field>
@@ -824,7 +784,7 @@ function ApptForm({ initial, services, staff, clients, defaultDate, onSaved, onD
             {deleting ? 'Eliminando…' : (confirmDel ? '¿Confirmar?' : 'Eliminar')}
           </Btn>
         )}
-        <Btn icon="check" onClick={submit} loading={saving} disabled={!serviceIds.length || !f.staff_id || deleting}>
+        <Btn icon="check" onClick={submit} loading={saving} disabled={!serviceIds.length || deleting}>
           {saving ? 'Guardando…' : (f.id ? 'Guardar cambios' : 'Guardar Cita')}
         </Btn>
       </div>
