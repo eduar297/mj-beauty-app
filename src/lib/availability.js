@@ -141,6 +141,33 @@ export function computeAvailableSlots({
   return { slots, staffBySlot: out };
 }
 
+// Todos los horarios de atención de un día, SIN filtrar por citas ni bloqueos.
+// La clienta reserva "a ciegas" y el salón confirma o reagenda después —
+// por defecto SIEMPRE aparecen todos los horarios. Usa la unión de las
+// ventanas de trabajo de las empleadas ese día; si no hay ninguna, cae a 9–18.
+export function computeAllSlots({ date, staff = [], stepMinutes = 30 }) {
+  if (!date) return [];
+  const dayOfWeek = DAY_KEYS[new Date(`${date}T00:00:00`).getDay()];
+  const windows = [];
+  for (const st of staff) {
+    const hours = (st.weekly_hours && Object.keys(st.weekly_hours).length > 0)
+      ? st.weekly_hours : DEFAULT_WEEKLY_HOURS;
+    for (const r of normalizeDayRanges(hours[dayOfWeek])) {
+      const s = toMin(r.start), e = toMin(r.end);
+      if (s != null && e != null && e > s) windows.push([s, e]);
+    }
+  }
+  // Fallback: si nadie tiene horario ese día (o no hay empleadas), usa 9–18
+  // para que SIEMPRE aparezcan horarios (incluye domingos).
+  if (!windows.length) windows.push([9 * 60, 18 * 60]);
+
+  const set = new Set();
+  for (const [ws, we] of windows) {
+    for (let t = ws; t < we; t += stepMinutes) set.add(t);
+  }
+  return Array.from(set).sort((a, b) => a - b).map(fromMin);
+}
+
 // Normaliza el valor de un día a array de rangos {start, end}.
 // - null/undefined → [] (libre)
 // - { start, end } (formato viejo) → [{start, end}]

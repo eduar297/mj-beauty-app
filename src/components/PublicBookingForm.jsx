@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Icon, Field, Input, Select, Btn } from './ui.jsx';
+import { Icon, Field, Input, Btn } from './ui.jsx';
 import ServicePicker from './ServicePicker.jsx';
 import {
-  api_appointments, api_clients, api_services, api_staff, api_staff_services,
-  api_time_off,
+  api_appointments, api_clients, api_services, api_staff,
 } from '../lib/api';
-import { computeAvailableSlots } from '../lib/availability.js';
+import { computeAllSlots } from '../lib/availability.js';
 
 // Clave para recordar a la clienta en este navegador. Mejora la UX en mobile:
 // al volver a reservar, el teléfono (y el nombre) ya están pre-llenados.
@@ -38,20 +37,17 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
   // (ej: pestañas + uñas). Guardamos los ids seleccionados.
   const [selectedIds, setSelectedIds] = useState([]);
   const [date, setDate] = useState(today);
-  const [preferredStaffId, setPreferredStaffId] = useState('');
   const [time, setTime] = useState('');
   const [step, setStep] = useState(1);
 
   // Datos cargados
   const [services, setServices] = useState(servicesProp || null);
-  const [allStaff, setAllStaff] = useState([]); // staff activos con weekly_hours
-  const [staffServices, setStaffServices] = useState({}); // serviceId -> [staffId]
+  const [allStaff, setAllStaff] = useState([]); // staff activos (para las ventanas horarias)
   const [existingClient, setExistingClient] = useState(null); // {id, name}
   const [phoneLookupBusy, setPhoneLookupBusy] = useState(false);
 
-  // Slots por fecha
-  const [slotsInfo, setSlotsInfo] = useState({ slots: [], staffBySlot: {} });
-  const [slotsLoading, setSlotsLoading] = useState(false);
+  // Horarios del día (siempre todos, sin filtrar)
+  const [slots, setSlots] = useState([]);
 
   // Submit
   const [submitting, setSubmitting] = useState(false);
@@ -66,14 +62,6 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
     }
     api_staff.list().then(({ data }) => setAllStaff(data || []));
   }, [servicesProp]);
-
-  // Cargar el mapping serviceId -> [staffId] solo de los servicios disponibles
-  useEffect(() => {
-    if (!services?.length) return;
-    Promise.all(services.map(s =>
-      api_staff_services.byService(s.id).then(r => [s.id, (r.data || []).map(x => x.staff_id)])
-    )).then(pairs => setStaffServices(Object.fromEntries(pairs)));
-  }, [services]);
 
   // Si llega defaultService (reserva de un servicio puntual), lo pre-selecciona.
   useEffect(() => {
@@ -92,18 +80,6 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
     () => selectedServices.reduce((sum, s) => sum + (Number(s.duration) || 0), 0),
     [selectedServices]
   );
-
-  // Empleadas elegibles: deben poder hacer TODOS los servicios que tengan
-  // empleadas asignadas. Un servicio sin nadie asignado no restringe.
-  const eligibleStaff = useMemo(() => {
-    if (!selectedServices.length) return [];
-    const constrainingSets = selectedServices
-      .map(s => staffServices[s.id])
-      .filter(ids => ids && ids.length > 0)
-      .map(ids => new Set(ids));
-    if (constrainingSets.length === 0) return allStaff;
-    return allStaff.filter(st => constrainingSets.every(set => set.has(st.id)));
-  }, [selectedServices, staffServices, allStaff]);
 
   // Lookup por teléfono (debounced 600ms) cuando hay 7+ dígitos
   const lookupTimer = useRef(null);
@@ -129,32 +105,13 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
     return () => clearTimeout(lookupTimer.current);
   }, [phone]);
 
-  // Computar slots disponibles cuando cambia (servicio, fecha, preferencia).
+  // Horarios del día: SIEMPRE se muestran todos (no se filtra por citas ni por
+  // empleada). La clienta reserva y el salón confirma o reagenda después.
   useEffect(() => {
-    if (step !== 2 || totalDuration <= 0 || !date || eligibleStaff.length === 0) {
-      setSlotsInfo({ slots: [], staffBySlot: {} });
-      return;
-    }
-    setTime(''); // reset al cambiar fecha/servicios/preferencia
-    setSlotsLoading(true);
-    const dayStartIso = `${date}T00:00:00.000Z`;
-    const dayEndIso   = `${date}T23:59:59.999Z`;
-    Promise.all([
-      api_time_off.byDateRange(dayStartIso, dayEndIso),
-      api_appointments.listForAvailability({ from: date, to: date }),
-    ]).then(([offRes, apptRes]) => {
-      const info = computeAvailableSlots({
-        // La cita ocupa el total de todos los servicios elegidos.
-        service: { duration: totalDuration },
-        date,
-        eligibleStaff,
-        timeOffs: offRes.data || [],
-        appointments: apptRes.data || [],
-        preferredStaffId: preferredStaffId || null,
-      });
-      setSlotsInfo(info);
-    }).finally(() => setSlotsLoading(false));
-  }, [step, selectedIds.join(','), totalDuration, date, preferredStaffId, eligibleStaff.length]);
+    if (step !== 2 || !date) { setSlots([]); return; }
+    setTime(''); // reset al cambiar de fecha
+    setSlots(computeAllSlots({ date, staff: allStaff, stepMinutes: 30 }));
+  }, [step, date, allStaff.length]);
 
   const submit = async () => {
     setErr('');
@@ -162,24 +119,15 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
     try {
       // 1. Upsert cliente por teléfono
       const { id: clientId, isNew: newClient } = await api_clients.upsertByPhone({ phone, name });
-      // 2. Decidir staff_id
-      const candidates = slotsInfo.staffBySlot[time] || [];
-      let staffId = null;
-      if (preferredStaffId && candidates.includes(preferredStaffId)) {
-        staffId = preferredStaffId;
-      } else if (candidates.length > 0) {
-        staffId = candidates[0];
-      }
-      if (!staffId) throw new Error('Esa hora ya no está disponible — elige otra');
 
-      // 3. Crear cita — service_id es el principal (compat), service_ids todos.
+      // 2. Crear cita SIN empleada asignada — el salón asigna al confirmar.
+      // service_id es el principal (compat), service_ids todos.
       const primary = selectedServices[0];
       const res = await api_appointments.create({
         client_id: clientId,
         service_id: primary.id,
         service_ids: selectedIds,
-        staff_id: staffId,
-        preferred_staff_id: preferredStaffId || null,
+        staff_id: null,
         date, time,
         duration: totalDuration || 60,
         status: 'pending',
@@ -291,31 +239,12 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
             <Input type="date" value={date} min={today} onChange={e => setDate(e.target.value)} />
           </Field>
 
-          {eligibleStaff.length >= 1 && (
-            <Field label={`Empleada${eligibleStaff.length > 1 ? ' (opcional)' : ''}`}>
-              <Select value={preferredStaffId}
-                onChange={e => setPreferredStaffId(e.target.value)}
-                options={[
-                  { value: '', label: 'Cualquiera disponible' },
-                  ...eligibleStaff.map(s => ({ value: s.id, label: s.name })),
-                ]} />
-              <div className="text-[11px] text-text-muted mt-1">
-                Elige una para ver solo sus turnos disponibles, o deja "Cualquiera" para ver todas las horas posibles.
-              </div>
-            </Field>
-          )}
-
-          <Field label="Horas disponibles">
-            {slotsLoading ? (
-              <div className="text-xs text-text-muted py-2">Calculando disponibilidad…</div>
-            ) : slotsInfo.slots.length === 0 ? (
-              <div className="text-xs text-text-muted bg-bg-elevated border border-border rounded-lg px-3 py-3">
-                No hay horas disponibles ese día — prueba otra fecha
-                {preferredStaffId && ' o quita la preferencia de empleada'}.
-              </div>
+          <Field label="Elige una hora">
+            {slots.length === 0 ? (
+              <div className="text-xs text-text-muted py-2">Elige una fecha…</div>
             ) : (
               <div className="grid grid-cols-4 sm:grid-cols-5 gap-1.5 max-h-48 overflow-y-auto py-1">
-                {slotsInfo.slots.map(s => (
+                {slots.map(s => (
                   <button key={s} type="button"
                     onClick={() => setTime(s)}
                     aria-pressed={time === s}
@@ -329,6 +258,9 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
                 ))}
               </div>
             )}
+            <div className="text-[11px] text-text-muted mt-1.5">
+              Tu cita queda como solicitud; te confirmamos la hora por WhatsApp.
+            </div>
           </Field>
 
           {err && (
