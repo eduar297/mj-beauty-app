@@ -380,12 +380,17 @@ export const api_appointments = {
 // ─── SITE SETTINGS (personalización pública) ─────────────────────────
 export const api_settings = {
   get: () => supabase.from('site_settings').select('*').eq('id', 1).maybeSingle(),
-  update: (data) =>
-    supabase.from('site_settings')
-      .update({ ...data, updated_at: new Date().toISOString() })
-      .eq('id', 1)
-      .select()
-      .single(),
+  update: async (data) => {
+    const payload = { ...data, updated_at: new Date().toISOString() };
+    let res = await supabase.from('site_settings').update(payload).eq('id', 1).select().single();
+    // Compat: si la BD todavía no tiene la columna service_cat_photos (migración
+    // pendiente), reintenta sin ella para no romper el guardado de configuración.
+    if (res.error && 'service_cat_photos' in payload && /service_cat_photos/.test(res.error.message || '')) {
+      const { service_cat_photos, ...rest } = payload;
+      res = await supabase.from('site_settings').update(rest).eq('id', 1).select().single();
+    }
+    return res;
+  },
 };
 
 // ─── TRANSACTIONS ────────────────────────────────────────────────────

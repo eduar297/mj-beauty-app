@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Header } from '../Dashboard.jsx';
-import { Icon, Btn, Field, Input, Textarea, ListLoading } from '../../components/ui.jsx';
-import { api_settings } from '../../lib/api';
+import { Icon, Btn, Field, Input, Textarea, ListLoading, Spinner } from '../../components/ui.jsx';
+import PhotoCropEditor, { ASPECT_LANDING_CARD } from '../../components/PhotoCropEditor.jsx';
+import { api_settings, api_services } from '../../lib/api';
 
 const EMPTY = {
   business_name: '',
@@ -20,19 +21,60 @@ const EMPTY = {
   facebook_url: '',
   tiktok_url: '',
   google_maps_url: '',
+  service_cat_photos: {},
 };
+
+// Categorías de servicio que se muestran en la landing (cat interno + label + fallback).
+const SERVICE_CATS = [
+  { cat: 'Uñas',     label: 'Uñas',     fallback: '/assets/svc-nails.jpeg' },
+  { cat: 'Pedicura', label: 'Pedicura', fallback: '/assets/svc-pedicure.jpeg' },
+  { cat: 'Pelo',     label: 'Cabello',  fallback: '/assets/svc-hair.jpeg' },
+  { cat: 'Faciales', label: 'Faciales', fallback: '/assets/svc-facial.jpeg' },
+  { cat: 'Cejas',    label: 'Cejas',    fallback: '/assets/svc-cejas.jpeg' },
+  { cat: 'Pestañas', label: 'Pestañas', fallback: '/assets/svc-pestanas.jpeg' },
+];
 
 export default function Configuracion() {
   const [f, setF] = useState(null); // null = loading
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState('');
   const [savedAt, setSavedAt] = useState(null);
+  // Edición de fotos de portada de categoría.
+  const [editingCat, setEditingCat] = useState(null);   // cat que se está reemplazando
+  const [pendingFile, setPendingFile] = useState(null); // archivo elegido, esperando crop
+  const [uploadingCat, setUploadingCat] = useState(null);
+  const fileRef = useRef();
 
   useEffect(() => {
     api_settings.get().then(({ data }) => setF({ ...EMPTY, ...(data || {}) }));
   }, []);
 
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+
+  const pickCatPhoto = (cat) => { setEditingCat(cat); fileRef.current?.click(); };
+  const onCatFile = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // permite re-elegir el mismo archivo
+    if (file) setPendingFile(file);
+  };
+  const uploadCatPhoto = async (croppedFile) => {
+    const cat = editingCat;
+    setUploadingCat(cat);
+    try {
+      const url = await api_services.uploadPhoto(croppedFile, `categoria-${cat}`);
+      setF(prev => ({ ...prev, service_cat_photos: { ...(prev.service_cat_photos || {}), [cat]: url } }));
+    } catch (e2) {
+      alert('Error subiendo foto: ' + (e2.message || e2));
+    } finally {
+      setUploadingCat(null);
+    }
+  };
+  const resetCatPhoto = (cat) =>
+    setF(prev => {
+      const next = { ...(prev.service_cat_photos || {}) };
+      delete next[cat];
+      return { ...prev, service_cat_photos: next };
+    });
 
   const submit = async (e) => {
     e?.preventDefault();
@@ -122,11 +164,76 @@ export default function Configuracion() {
             </Card>
           </div>
 
+          <section className="bg-bg-card border border-border rounded-2xl p-5 mt-5">
+            <header className="flex items-center gap-2.5 mb-1 pb-3 border-b border-border">
+              <div className="w-9 h-9 rounded-lg grid place-items-center bg-gold-dim text-gold border border-border-strong">
+                <Icon name="scissors" size={16} />
+              </div>
+              <div className="min-w-0">
+                <h2 className="font-serif text-base font-semibold leading-tight">Portadas de categorías</h2>
+                <p className="text-[11px] text-text-muted mt-0.5">Las fotos que se ven en "Nuestros Servicios" de la página</p>
+              </div>
+            </header>
+
+            <div className="grid gap-3 pt-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))' }}>
+              {SERVICE_CATS.map(({ cat, label, fallback }) => {
+                const custom = f.service_cat_photos?.[cat];
+                const img = custom || fallback;
+                const busy = uploadingCat === cat;
+                return (
+                  <div key={cat} className="rounded-xl border border-border overflow-hidden bg-bg-elevated">
+                    <div className="relative aspect-video bg-bg-card">
+                      {busy ? (
+                        <div className="absolute inset-0 grid place-items-center text-text-muted text-xs gap-1">
+                          <Spinner size={16} color="var(--gold)" /> Subiendo…
+                        </div>
+                      ) : (
+                        <img src={img} alt={label} className="w-full h-full object-cover" />
+                      )}
+                      {custom && !busy && (
+                        <span className="absolute top-1.5 left-1.5 text-[9px] font-bold uppercase tracking-wider bg-gold text-[#0d0c0a] px-1.5 py-0.5 rounded-full">Personalizada</span>
+                      )}
+                    </div>
+                    <div className="p-2.5">
+                      <div className="text-sm font-semibold mb-2">{label}</div>
+                      <div className="flex gap-1.5">
+                        <button type="button" onClick={() => pickCatPhoto(cat)} disabled={busy}
+                          className="flex-1 text-xs py-1.5 rounded-lg border border-border-strong text-text-secondary hover:border-gold hover:text-gold transition cursor-pointer disabled:opacity-50">
+                          Cambiar
+                        </button>
+                        {custom && (
+                          <button type="button" onClick={() => resetCatPhoto(cat)} disabled={busy}
+                            aria-label={`Volver a la foto por defecto de ${label}`}
+                            className="text-xs px-2.5 py-1.5 rounded-lg border border-border text-text-muted hover:text-red-400 hover:border-red-400 transition cursor-pointer disabled:opacity-50">
+                            <Icon name="close" size={12} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-text-muted mt-3">
+              Recuerda tocar "Guardar cambios" para que las fotos nuevas se publiquen.
+            </p>
+          </section>
+
           <div className="flex justify-end mt-6">
             <Btn type="submit" icon="save" onClick={submit} loading={saving}>
               {saving ? 'Guardando…' : 'Guardar cambios'}
             </Btn>
           </div>
+
+          <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={onCatFile} />
+          <PhotoCropEditor
+            file={pendingFile}
+            open={!!pendingFile}
+            onClose={() => setPendingFile(null)}
+            onApply={uploadCatPhoto}
+            aspect={ASPECT_LANDING_CARD}
+            label="Ajustar portada de categoría"
+          />
         </div>
       )}
     </form>

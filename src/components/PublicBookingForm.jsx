@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, Field, Input, Select, Btn } from './ui.jsx';
+import ServicePicker from './ServicePicker.jsx';
 import {
   api_appointments, api_clients, api_services, api_staff, api_staff_services,
   api_time_off,
@@ -264,25 +265,12 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
             {services === null ? (
               <div className="text-xs text-text-muted py-2">Cargando servicios…</div>
             ) : (
-              <div className="max-h-56 overflow-y-auto rounded-lg border border-border divide-y divide-border">
-                {services.map(s => {
-                  const checked = selectedIds.includes(s.id);
-                  return (
-                    <button key={s.id} type="button"
-                      onClick={() => setSelectedIds(prev => checked ? prev.filter(id => id !== s.id) : [...prev, s.id])}
-                      aria-pressed={checked}
-                      className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left cursor-pointer transition ${checked ? 'bg-gold-dim' : 'hover:bg-bg-hover'}`}>
-                      <span className={`w-4 h-4 rounded border flex-shrink-0 grid place-items-center ${checked ? 'bg-gold border-gold' : 'border-border-strong'}`}>
-                        {checked && <Icon name="check" size={11} color="#0d0c0a" />}
-                      </span>
-                      <span className="flex-1 min-w-0">
-                        <span className="text-sm font-medium block truncate">{s.name}</span>
-                        <span className="text-[11px] text-text-muted">{s.duration} min</span>
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
+              <ServicePicker
+                services={services}
+                selectedIds={selectedIds}
+                onToggle={(id) => setSelectedIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])}
+                maxHeight="max-h-60"
+              />
             )}
           </Field>
 

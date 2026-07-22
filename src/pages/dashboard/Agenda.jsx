@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Header } from '../Dashboard.jsx';
 import { Icon, Btn, Modal, Field, Input, Select, ListLoading } from '../../components/ui.jsx';
 import { api_appointments, api_services, api_staff, api_clients } from '../../lib/api';
+import ServicePicker from '../../components/ServicePicker.jsx';
 import { useAuth } from '../../hooks/useAuth.jsx';
 
 // ── Constantes ────────────────────────────────────────────────────────
@@ -780,23 +781,12 @@ function ApptForm({ initial, services, staff, clients, defaultDate, onSaved, onD
           options={[{ value: '', label: 'Selecciona' }, ...clients.map(c => ({ value: c.id, label: c.name }))]} />
       </Field>
       <Field label="Servicios (uno o varios)">
-        <div className="max-h-44 overflow-y-auto rounded-lg border border-border divide-y divide-border">
-          {services.map(s => {
-            const checked = serviceIds.includes(s.id);
-            return (
-              <button key={s.id} type="button"
-                onClick={() => setServiceIds(prev => checked ? prev.filter(id => id !== s.id) : [...prev, s.id])}
-                aria-pressed={checked}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 text-left cursor-pointer transition ${checked ? 'bg-gold-dim' : 'hover:bg-bg-hover'}`}>
-                <span className={`w-4 h-4 rounded border flex-shrink-0 grid place-items-center ${checked ? 'bg-gold border-gold' : 'border-border-strong'}`}>
-                  {checked && <Icon name="check" size={11} color="#0d0c0a" />}
-                </span>
-                <span className="flex-1 min-w-0 text-sm truncate">{s.name}</span>
-                <span className="text-[11px] text-text-muted flex-shrink-0">{s.duration}min</span>
-              </button>
-            );
-          })}
-        </div>
+        <ServicePicker
+          services={services}
+          selectedIds={serviceIds}
+          onToggle={(id) => setServiceIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])}
+          maxHeight="max-h-48"
+        />
         {serviceIds.length > 0 && (
           <div className="text-[11px] text-text-muted mt-1.5">
             {serviceIds.length} servicio{serviceIds.length > 1 ? 's' : ''} · {totalDuration} min en total

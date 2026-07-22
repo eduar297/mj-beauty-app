@@ -32,13 +32,15 @@ export default function Landing() {
     setLightbox({ slides, index: indexFor[photoId] ?? 0 });
   };
 
+  // Foto de portada por categoría: la personalizada del admin (si existe) o el asset por defecto.
+  const catPhotos = settings?.service_cat_photos || {};
   const cats = [
-    { label: 'Uñas',     sub: 'Manicure',                  img: '/assets/svc-nails.jpeg',    cat: 'Uñas' },
-    { label: 'Pedicura', sub: 'Pies & Spa',                img: '/assets/svc-pedicure.jpeg',    cat: 'Pedicura' },
-    { label: 'Cabello',  sub: 'Cortes, Tintes & Más',      img: '/assets/svc-hair.jpeg',     cat: 'Pelo' },
-    { label: 'Faciales', sub: 'Limpieza & Tratamientos',   img: '/assets/svc-facial.jpeg',   cat: 'Faciales' },
-    { label: 'Cejas',    sub: 'Diseño & Laminado',         img: '/assets/svc-cejas.jpeg',    cat: 'Cejas' },
-    { label: 'Pestañas', sub: 'Lifting & Extensiones',     img: '/assets/svc-pestanas.jpeg', cat: 'Pestañas' },
+    { label: 'Uñas',     sub: 'Manicure',                  img: catPhotos['Uñas']     || '/assets/svc-nails.jpeg',    cat: 'Uñas' },
+    { label: 'Pedicura', sub: 'Pies & Spa',                img: catPhotos['Pedicura'] || '/assets/svc-pedicure.jpeg', cat: 'Pedicura' },
+    { label: 'Cabello',  sub: 'Cortes, Tintes & Más',      img: catPhotos['Pelo']     || '/assets/svc-hair.jpeg',     cat: 'Pelo' },
+    { label: 'Faciales', sub: 'Limpieza & Tratamientos',   img: catPhotos['Faciales'] || '/assets/svc-facial.jpeg',   cat: 'Faciales' },
+    { label: 'Cejas',    sub: 'Diseño & Laminado',         img: catPhotos['Cejas']    || '/assets/svc-cejas.jpeg',    cat: 'Cejas' },
+    { label: 'Pestañas', sub: 'Lifting & Extensiones',     img: catPhotos['Pestañas'] || '/assets/svc-pestanas.jpeg', cat: 'Pestañas' },
   ];
 
   const s = settings || {};

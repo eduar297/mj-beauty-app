@@ -141,6 +141,11 @@ create table if not exists site_settings (
 
 insert into site_settings (id) values (1) on conflict do nothing;
 
+-- Migration: fotos de portada por categoría de servicio en la landing
+-- (jsonb { 'Uñas': url, 'Pelo': url, ... }). El admin las edita desde
+-- Personalización; la landing usa el fallback /assets/svc-*.jpeg si falta.
+alter table site_settings add column if not exists service_cat_photos jsonb default '{}'::jsonb;
+
 -- ───── Tabla: transactions (caja) ───────────────────────────────────
 create table if not exists transactions (
   id uuid primary key default uuid_generate_v4(),
