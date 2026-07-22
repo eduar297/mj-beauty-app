@@ -33,7 +33,9 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
   // navegador (si existe). Esto evita re-tipear el teléfono en cada visita.
   const [phone, setPhone] = useState(() => readLocalIdentity().phone);
   const [name, setName] = useState(() => readLocalIdentity().name);
-  const [serviceName, setServiceName] = useState(defaultService || '');
+  // Multi-servicio: la clienta puede elegir varios en una sola cita
+  // (ej: pestañas + uñas). Guardamos los ids seleccionados.
+  const [selectedIds, setSelectedIds] = useState([]);
   const [date, setDate] = useState(today);
   const [preferredStaffId, setPreferredStaffId] = useState('');
   const [time, setTime] = useState('');
@@ -72,19 +74,35 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
     )).then(pairs => setStaffServices(Object.fromEntries(pairs)));
   }, [services]);
 
-  const selectedService = useMemo(
-    () => (services || []).find(s => s.name === serviceName) || null,
-    [services, serviceName]
+  // Si llega defaultService (reserva de un servicio puntual), lo pre-selecciona.
+  useEffect(() => {
+    if (!defaultService || !services?.length) return;
+    const svc = services.find(s => s.name === defaultService);
+    if (svc) setSelectedIds(prev => (prev.length ? prev : [svc.id]));
+  }, [defaultService, services]);
+
+  const selectedServices = useMemo(
+    () => (services || []).filter(s => selectedIds.includes(s.id)),
+    [services, selectedIds]
   );
 
-  // Empleadas elegibles para el servicio elegido
+  // Duración total = suma de los servicios elegidos (se agenda todo junto).
+  const totalDuration = useMemo(
+    () => selectedServices.reduce((sum, s) => sum + (Number(s.duration) || 0), 0),
+    [selectedServices]
+  );
+
+  // Empleadas elegibles: deben poder hacer TODOS los servicios que tengan
+  // empleadas asignadas. Un servicio sin nadie asignado no restringe.
   const eligibleStaff = useMemo(() => {
-    if (!selectedService) return [];
-    const ids = new Set(staffServices[selectedService.id] || []);
-    // Fallback: si nadie está linkeado a ese servicio aún, mostrar todo el staff activo.
-    const pool = ids.size > 0 ? allStaff.filter(s => ids.has(s.id)) : allStaff;
-    return pool;
-  }, [selectedService, staffServices, allStaff]);
+    if (!selectedServices.length) return [];
+    const constrainingSets = selectedServices
+      .map(s => staffServices[s.id])
+      .filter(ids => ids && ids.length > 0)
+      .map(ids => new Set(ids));
+    if (constrainingSets.length === 0) return allStaff;
+    return allStaff.filter(st => constrainingSets.every(set => set.has(st.id)));
+  }, [selectedServices, staffServices, allStaff]);
 
   // Lookup por teléfono (debounced 600ms) cuando hay 7+ dígitos
   const lookupTimer = useRef(null);
@@ -112,11 +130,11 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
 
   // Computar slots disponibles cuando cambia (servicio, fecha, preferencia).
   useEffect(() => {
-    if (step !== 2 || !selectedService || !date || eligibleStaff.length === 0) {
+    if (step !== 2 || totalDuration <= 0 || !date || eligibleStaff.length === 0) {
       setSlotsInfo({ slots: [], staffBySlot: {} });
       return;
     }
-    setTime(''); // reset al cambiar fecha/servicio/preferencia
+    setTime(''); // reset al cambiar fecha/servicios/preferencia
     setSlotsLoading(true);
     const dayStartIso = `${date}T00:00:00.000Z`;
     const dayEndIso   = `${date}T23:59:59.999Z`;
@@ -125,7 +143,8 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
       api_appointments.listForAvailability({ from: date, to: date }),
     ]).then(([offRes, apptRes]) => {
       const info = computeAvailableSlots({
-        service: selectedService,
+        // La cita ocupa el total de todos los servicios elegidos.
+        service: { duration: totalDuration },
         date,
         eligibleStaff,
         timeOffs: offRes.data || [],
@@ -134,7 +153,7 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
       });
       setSlotsInfo(info);
     }).finally(() => setSlotsLoading(false));
-  }, [step, selectedService?.id, date, preferredStaffId, eligibleStaff.length]);
+  }, [step, selectedIds.join(','), totalDuration, date, preferredStaffId, eligibleStaff.length]);
 
   const submit = async () => {
     setErr('');
@@ -152,14 +171,16 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
       }
       if (!staffId) throw new Error('Esa hora ya no está disponible — elige otra');
 
-      // 3. Crear cita
+      // 3. Crear cita — service_id es el principal (compat), service_ids todos.
+      const primary = selectedServices[0];
       const res = await api_appointments.create({
         client_id: clientId,
-        service_id: selectedService.id,
+        service_id: primary.id,
+        service_ids: selectedIds,
         staff_id: staffId,
         preferred_staff_id: preferredStaffId || null,
         date, time,
-        duration: selectedService.duration || 60,
+        duration: totalDuration || 60,
         status: 'pending',
         notes: null,
       });
@@ -195,7 +216,7 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
     </div>
   );
 
-  const canContinue = phone.replace(/\D/g, '').length >= 7 && name.trim() && serviceName;
+  const canContinue = phone.replace(/\D/g, '').length >= 7 && name.trim() && selectedIds.length > 0;
   const canConfirm = date && time && !submitting;
 
   return (
@@ -239,12 +260,40 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
             <Input value={name} onChange={e => setName(e.target.value)} placeholder="Tu nombre" />
           </Field>
 
-          <Field label="Servicio">
-            <Select value={serviceName} onChange={e => setServiceName(e.target.value)}
-              options={services === null
-                ? [{ value: '', label: 'Cargando servicios…' }]
-                : [{ value: '', label: 'Selecciona un servicio' }, ...services.map(x => ({ value: x.name, label: `${x.name} — ${x.duration}min` }))]} />
+          <Field label="Servicios (elige uno o varios)">
+            {services === null ? (
+              <div className="text-xs text-text-muted py-2">Cargando servicios…</div>
+            ) : (
+              <div className="max-h-56 overflow-y-auto rounded-lg border border-border divide-y divide-border">
+                {services.map(s => {
+                  const checked = selectedIds.includes(s.id);
+                  return (
+                    <button key={s.id} type="button"
+                      onClick={() => setSelectedIds(prev => checked ? prev.filter(id => id !== s.id) : [...prev, s.id])}
+                      aria-pressed={checked}
+                      className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left cursor-pointer transition ${checked ? 'bg-gold-dim' : 'hover:bg-bg-hover'}`}>
+                      <span className={`w-4 h-4 rounded border flex-shrink-0 grid place-items-center ${checked ? 'bg-gold border-gold' : 'border-border-strong'}`}>
+                        {checked && <Icon name="check" size={11} color="#0d0c0a" />}
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="text-sm font-medium block truncate">{s.name}</span>
+                        <span className="text-[11px] text-text-muted">{s.duration} min</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </Field>
+
+          {selectedIds.length > 0 && (
+            <div className="-mt-2 mb-3 text-xs flex items-center justify-between gap-2">
+              <span className="text-text-secondary">
+                {selectedIds.length} servicio{selectedIds.length > 1 ? 's' : ''} · {totalDuration} min en total
+              </span>
+              {selectedIds.length > 1 && <span className="text-gold">Se agenda todo en una cita</span>}
+            </div>
+          )}
 
           <Btn onClick={() => canContinue && setStep(2)} disabled={!canContinue}>Continuar →</Btn>
         </>

@@ -106,6 +106,14 @@ create table if not exists appointments (
 -- Migration: preferencia opcional de empleada elegida por la clienta al reservar.
 alter table appointments add column if not exists preferred_staff_id uuid references staff(id) on delete set null;
 
+-- Migration: varios servicios por cita (ej: pestañas + uñas en la misma cita).
+-- service_id sigue siendo el servicio "principal" (= service_ids[1]) para
+-- compatibilidad con caja, agenda y notificaciones; service_ids guarda todos.
+-- duration ya es la suma total, así que la agenda y la disponibilidad no cambian.
+alter table appointments add column if not exists service_ids uuid[];
+update appointments set service_ids = array[service_id]
+  where service_ids is null and service_id is not null;
+
 -- ───── Tabla: site_settings (personalización pública) ──────────────
 -- Fila única (id = 1). El admin edita estos campos desde el dashboard
 -- y la landing los lee para renderizar Nosotras / Contacto.
@@ -358,6 +366,15 @@ drop policy if exists "products_storage_delete" on storage.objects;
 create policy "products_storage_delete" on storage.objects for delete
 using (bucket_id = 'products');
 
+-- ───── Migration: precios en USD con centavos ──────────────────────
+-- Antes los montos eran numeric(_,0) (COP sin decimales). Ahora la app
+-- maneja dólares, así que permitimos 2 decimales (ej: 2.99).
+alter table products     alter column price     type numeric(12,2);
+alter table services     alter column price     type numeric(12,2);
+alter table services     alter column price_max type numeric(12,2);
+alter table transactions alter column amount    type numeric(12,2);
+alter table clients      alter column spent     type numeric(12,2);
+
 -- ───── Tabla: reviews (reseñas públicas de clientas) ────────────────
 create table if not exists reviews (
   id uuid primary key default uuid_generate_v4(),
@@ -445,7 +462,12 @@ declare
   v_client text; v_phone text; v_service text; v_staff text; v_pref text; msg text;
 begin
   select name, phone into v_client, v_phone from clients where id = new.client_id;
-  select name into v_service from services where id = new.service_id;
+  -- Todos los servicios de la cita (multi-servicio), en el orden elegido.
+  select string_agg(s.name, ' + ' order by array_position(new.service_ids, s.id))
+    into v_service from services s where s.id = any(new.service_ids);
+  if v_service is null then
+    select name into v_service from services where id = new.service_id;
+  end if;
   select name into v_staff from staff where id = new.staff_id;
   select name into v_pref from staff where id = new.preferred_staff_id;
   msg := '📅 Nueva reserva' || E'\n'
@@ -523,7 +545,11 @@ language plpgsql security definer set search_path = public as $$
 declare v_client text; v_phone text; v_service text; msg text;
 begin
   select name, phone into v_client, v_phone from clients where id = new.client_id;
-  select name into v_service from services where id = new.service_id;
+  select string_agg(s.name, ' + ' order by array_position(new.service_ids, s.id))
+    into v_service from services s where s.id = any(new.service_ids);
+  if v_service is null then
+    select name into v_service from services where id = new.service_id;
+  end if;
   msg := '❌ Cita cancelada' || E'\n'
       || 'Clienta: ' || coalesce(v_client, 'Sin nombre')
       || tg_contact_line(nullif(v_phone, '')) || E'\n'

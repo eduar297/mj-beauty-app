@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Icon, Modal, Btn, ListLoading, CAT_COLORS, CAT_ICONS, BeforeAfterPair, PhotoTile, Lightbox, photosToSlides } from '../components/ui.jsx';
 import PublicBookingForm from '../components/PublicBookingForm.jsx';
 import { api_services, api_service_photos } from '../lib/api';
+import { fmtMoney } from '../lib/money';
 
 export default function Services() {
   const { cat: paramCat } = useParams();
@@ -14,7 +15,7 @@ export default function Services() {
   const [bookingService, setBookingService] = useState(null);
   const [detailService, setDetailService] = useState(null); // servicio que se ve en detalle
   const [lightbox, setLightbox] = useState(null); // { slides, index }
-  const fmt = n => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n);
+  const fmt = fmtMoney;
   // Helpers para mostrar rangos opcionales (e.g. "60-90 min", "$1.200 — $2.000").
   const fmtDuration = (s) =>
     s.duration_max && s.duration_max > s.duration

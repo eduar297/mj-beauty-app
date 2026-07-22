@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Header } from '../Dashboard.jsx';
 import { Icon, Btn, Modal, Field, Input, Select, ListLoading } from '../../components/ui.jsx';
 import { api_transactions, api_services, api_staff } from '../../lib/api';
+import { fmtMoney } from '../../lib/money';
 
 export default function Caja() {
   const today = new Date().toISOString().slice(0,10);
@@ -9,7 +10,7 @@ export default function Caja() {
   const [showAdd, setShowAdd] = useState(false);
   const [services, setServices] = useState([]);
   const [staff, setStaff] = useState([]);
-  const fmt = n => new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 }).format(n||0);
+  const fmt = fmtMoney;
 
   const load = async () => {
     const { data } = await api_transactions.list(today);
@@ -128,7 +129,7 @@ function PayForm({ services, staff, onSaved }) {
           options={[{value:'',label:'Selecciona'}, ...staff.map(s => ({value:s.name, label:s.name}))]} />
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Monto"><Input type="number" value={f.amount ?? ''} onChange={e=>setF({...f, amount: e.target.value === '' ? '' : Number(e.target.value)})} /></Field>
+        <Field label="Monto (USD)"><Input type="number" step="0.01" min="0" value={f.amount ?? ''} onChange={e=>setF({...f, amount: e.target.value === '' ? '' : Number(e.target.value)})} /></Field>
         <Field label="Método">
           <Select value={f.method} onChange={e=>setF({...f, method:e.target.value})}
             options={[{value:'efectivo',label:'Efectivo'},{value:'tarjeta',label:'Tarjeta'},{value:'transferencia',label:'Transferencia'}]} />

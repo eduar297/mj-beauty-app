@@ -3,6 +3,7 @@ import { Header } from '../Dashboard.jsx';
 import { Icon, Btn, Modal, Field, Input, Select, ListLoading, Spinner, CAT_COLORS, CAT_ICONS, BeforeAfterPair, PhotoTile } from '../../components/ui.jsx';
 import PhotoCropEditor, { ASPECT_LANDING_CARD } from '../../components/PhotoCropEditor.jsx';
 import { api_services, api_service_photos } from '../../lib/api';
+import { fmtMoney } from '../../lib/money';
 import {
   DndContext, PointerSensor, TouchSensor, KeyboardSensor,
   useSensor, useSensors, closestCenter,
@@ -20,7 +21,7 @@ export default function Servicios() {
   const [activeCat, setActiveCat] = useState('Uñas');
   const [editing, setEditing] = useState(null);
   const [reorderMode, setReorderMode] = useState(false);
-  const fmt = n => new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 }).format(n||0);
+  const fmt = fmtMoney;
 
   const load = async () => {
     const { data } = await api_services.list();
@@ -258,18 +259,19 @@ function ServiceForm({ initial, onSaved, onDelete }) {
         </Field>
       </div>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Precio mín (COP)">
-          <Input type="number" value={f.price ?? ''}
+        <Field label="Precio mín (USD)">
+          <Input type="number" step="0.01" min="0" value={f.price ?? ''}
+            placeholder="Ej: 9.99"
             onChange={e=>setF({...f, price: e.target.value === '' ? '' : Number(e.target.value)})} />
         </Field>
         <Field label="Precio máx (opcional)">
-          <Input type="number" value={f.price_max ?? ''}
+          <Input type="number" step="0.01" min="0" value={f.price_max ?? ''}
             onChange={e=>setF({...f, price_max: e.target.value === '' ? '' : Number(e.target.value)})}
             placeholder="Deja vacío si es fijo" />
         </Field>
       </div>
       <div className="text-[11px] text-text-muted -mt-2 mb-3">
-        Si llenas los campos "máx", se mostrará un rango (ej: "30–60 min", "$50k–$80k"). La duración mín es la que se usa para reservar.
+        Si llenas los campos "máx", se mostrará un rango (ej: "30–60 min", "$50 — $80"). La duración mín es la que se usa para reservar.
       </div>
       <label className="flex items-center gap-2.5 mb-5 cursor-pointer">
         <input type="checkbox" checked={!!f.popular} onChange={e=>setF({...f, popular:e.target.checked})} className="w-4 h-4 accent-gold" />

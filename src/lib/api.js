@@ -330,7 +330,13 @@ export const api_appointments = {
       .gte('date', from).lte('date', to),
 
   create: async (data) => {
-    const res = await supabase.from('appointments').insert(data).select().single();
+    let res = await supabase.from('appointments').insert(data).select().single();
+    // Compat: si la BD todavía no tiene la columna service_ids (migración
+    // pendiente), reintenta sin ella para no romper la reserva.
+    if (res.error && data.service_ids && /service_ids/.test(res.error.message || '')) {
+      const { service_ids, ...rest } = data;
+      res = await supabase.from('appointments').insert(rest).select().single();
+    }
     if (!res.error && res.data) {
       // Solo notificamos cuando es pendiente (booking público o admin marca pending).
       if (res.data.status === 'pending') {
@@ -344,7 +350,11 @@ export const api_appointments = {
     // Capturar el estado previo para detectar transiciones.
     const { data: before } = await supabase
       .from('appointments').select('status, staff_id').eq('id', id).maybeSingle();
-    const res = await supabase.from('appointments').update(data).eq('id', id).select().single();
+    let res = await supabase.from('appointments').update(data).eq('id', id).select().single();
+    if (res.error && data.service_ids && /service_ids/.test(res.error.message || '')) {
+      const { service_ids, ...rest } = data;
+      res = await supabase.from('appointments').update(rest).eq('id', id).select().single();
+    }
     if (!res.error && res.data && before) {
       if (before.status !== res.data.status) {
         if (res.data.status === 'confirmed') {

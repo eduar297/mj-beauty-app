@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Header } from '../Dashboard.jsx';
 import { Icon, Btn, StatusBadge, Avatar, Modal, Field, Input, Select, ListLoading } from '../../components/ui.jsx';
 import { api_clients } from '../../lib/api';
+import { fmtMoney } from '../../lib/money';
 import { useAuth } from '../../hooks/useAuth.jsx';
 
 export default function Clientes() {
@@ -10,7 +11,7 @@ export default function Clientes() {
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState(null);
   const isAdmin = user?.role === 'admin';
-  const fmt = n => new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 }).format(n||0);
+  const fmt = fmtMoney;
 
   const load = async () => {
     const { data } = await api_clients.list();

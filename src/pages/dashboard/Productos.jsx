@@ -4,6 +4,7 @@ import { Icon, Btn, Modal, Field, Input, Select, ListLoading, Spinner, PROD_CAT_
 import PhotoCropEditor, { ASPECT_SQUARE } from '../../components/PhotoCropEditor.jsx';
 import { LOW_STOCK } from '../../components/ProductCard.jsx';
 import { api_products } from '../../lib/api';
+import { fmtMoney } from '../../lib/money';
 import {
   DndContext, PointerSensor, TouchSensor, KeyboardSensor,
   useSensor, useSensors, closestCenter,
@@ -21,7 +22,7 @@ export default function Productos() {
   const [activeCat, setActiveCat] = useState('Uñas');
   const [editing, setEditing] = useState(null);
   const [reorderMode, setReorderMode] = useState(false);
-  const fmt = n => new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 }).format(n||0);
+  const fmt = fmtMoney;
 
   const load = async () => {
     const { data } = await api_products.list();
@@ -281,8 +282,9 @@ function ProductForm({ initial, onSaved, onDelete }) {
           className="w-full bg-bg-card border border-border rounded-lg px-3 py-2.5 text-sm outline-none focus:border-gold resize-y" />
       </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Precio (COP)">
-          <Input type="number" value={f.price ?? ''}
+        <Field label="Precio (USD)">
+          <Input type="number" step="0.01" min="0" value={f.price ?? ''}
+            placeholder="Ej: 2.99"
             onChange={e=>setF({...f, price: e.target.value === '' ? '' : Number(e.target.value)})} />
         </Field>
         <Field label="Stock (unidades)">

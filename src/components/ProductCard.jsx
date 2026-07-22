@@ -1,9 +1,8 @@
 import { Icon, PROD_CAT_COLORS } from './ui.jsx';
+import { fmtMoney as fmt } from '../lib/money';
 
 // Con stock ≤ LOW_STOCK (y > 0) se muestra "¡Últimas unidades!".
 export const LOW_STOCK = 3;
-
-const fmt = n => new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 }).format(n || 0);
 
 // Tarjeta pública de producto (landing + /productos). El pedido se hace por
 // WhatsApp con mensaje pre-armado; si el número no está configurado en
@@ -41,7 +40,7 @@ export default function ProductCard({ product: p, whatsapp }) {
         </div>
         <div className="text-[10px] uppercase tracking-widest text-text-muted mb-2">{p.cat}</div>
         {p.description && (
-          <p className="text-xs text-text-muted leading-relaxed mb-3 line-clamp-2">{p.description}</p>
+          <p className="text-xs text-text-muted leading-relaxed mb-3 whitespace-pre-line">{p.description}</p>
         )}
 
         <div className="mt-auto pt-1">
@@ -52,9 +51,9 @@ export default function ProductCard({ product: p, whatsapp }) {
             </button>
           ) : waHref && (
             <a href={waHref} target="_blank" rel="noopener noreferrer"
-              style={{ background: `${color}22`, borderColor: `${color}44`, color }}
-              className="w-full py-2 rounded-lg text-xs font-bold border cursor-pointer hover:opacity-90 transition flex items-center justify-center gap-1.5">
-              <Icon name="whatsapp" size={13} /> Pedir por WhatsApp
+              className="w-full py-2.5 rounded-lg text-xs font-bold cursor-pointer transition flex items-center justify-center gap-1.5 text-white shadow-sm hover:brightness-110 active:brightness-95"
+              style={{ background: '#25D366' }}>
+              <Icon name="whatsapp" size={14} color="#fff" /> Pedir por WhatsApp
             </a>
           )}
         </div>

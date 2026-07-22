@@ -408,6 +408,7 @@ function EventBlock({ a, top, height, left, width, onClick, expanded }) {
       {!isShort && (
         <div className={`text-[10px] truncate mt-0.5 ${isCancelled ? 'text-text-muted' : 'text-text-secondary'}`}>
           {a.time?.slice(0, 5)} · {a.services?.name || 'Servicio'}
+          {a.service_ids?.length > 1 && <span className="text-gold font-semibold"> +{a.service_ids.length - 1}</span>}
           {isCompleted && <span className="ml-1">✓</span>}
         </div>
       )}
@@ -679,6 +680,15 @@ function ApptForm({ initial, services, staff, clients, defaultDate, onSaved, onD
     date: defaultDate, time: '10:00', notes: '', status: 'confirmed',
     ...initial,
   });
+  // Multi-servicio: una cita puede tener varios servicios (ej: pestañas + uñas).
+  const [serviceIds, setServiceIds] = useState(
+    initial?.service_ids?.length ? initial.service_ids
+      : (initial?.service_id ? [initial.service_id] : [])
+  );
+  const totalDuration = serviceIds.reduce((sum, id) => {
+    const s = services.find(x => x.id === id);
+    return sum + (Number(s?.duration) || 0);
+  }, 0);
   const [saving, setSaving] = useState(false);
   const [deciding, setDeciding] = useState(false); // accept/reject inflight
   const [deleting, setDeleting] = useState(false);
@@ -711,14 +721,14 @@ function ApptForm({ initial, services, staff, clients, defaultDate, onSaved, onD
     setErr('');
     setSaving(true);
     try {
-      const svc = services.find(s => s.id === f.service_id);
       const payload = {
         client_id: f.client_id || null,
-        service_id: f.service_id || null,
+        service_id: serviceIds[0] || null,       // principal (compat)
+        service_ids: serviceIds,                  // todos los servicios
         staff_id: f.staff_id || null,
         date: f.date,
         time: f.time,
-        duration: svc?.duration || f.duration || 60,
+        duration: totalDuration || f.duration || 60,
         status: f.status,
         notes: f.notes || null,
       };
@@ -769,9 +779,29 @@ function ApptForm({ initial, services, staff, clients, defaultDate, onSaved, onD
         <Select value={f.client_id || ''} onChange={e => setF({ ...f, client_id: e.target.value })}
           options={[{ value: '', label: 'Selecciona' }, ...clients.map(c => ({ value: c.id, label: c.name }))]} />
       </Field>
-      <Field label="Servicio">
-        <Select value={f.service_id || ''} onChange={e => setF({ ...f, service_id: e.target.value })}
-          options={[{ value: '', label: 'Selecciona' }, ...services.map(s => ({ value: s.id, label: `${s.name} — ${s.duration}min` }))]} />
+      <Field label="Servicios (uno o varios)">
+        <div className="max-h-44 overflow-y-auto rounded-lg border border-border divide-y divide-border">
+          {services.map(s => {
+            const checked = serviceIds.includes(s.id);
+            return (
+              <button key={s.id} type="button"
+                onClick={() => setServiceIds(prev => checked ? prev.filter(id => id !== s.id) : [...prev, s.id])}
+                aria-pressed={checked}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 text-left cursor-pointer transition ${checked ? 'bg-gold-dim' : 'hover:bg-bg-hover'}`}>
+                <span className={`w-4 h-4 rounded border flex-shrink-0 grid place-items-center ${checked ? 'bg-gold border-gold' : 'border-border-strong'}`}>
+                  {checked && <Icon name="check" size={11} color="#0d0c0a" />}
+                </span>
+                <span className="flex-1 min-w-0 text-sm truncate">{s.name}</span>
+                <span className="text-[11px] text-text-muted flex-shrink-0">{s.duration}min</span>
+              </button>
+            );
+          })}
+        </div>
+        {serviceIds.length > 0 && (
+          <div className="text-[11px] text-text-muted mt-1.5">
+            {serviceIds.length} servicio{serviceIds.length > 1 ? 's' : ''} · {totalDuration} min en total
+          </div>
+        )}
       </Field>
       <Field label="Empleada">
         <Select value={f.staff_id || ''} onChange={e => setF({ ...f, staff_id: e.target.value })}
@@ -803,7 +833,7 @@ function ApptForm({ initial, services, staff, clients, defaultDate, onSaved, onD
             {deleting ? 'Eliminando…' : (confirmDel ? '¿Confirmar?' : 'Eliminar')}
           </Btn>
         )}
-        <Btn icon="check" onClick={submit} loading={saving} disabled={!f.service_id || !f.staff_id || deleting}>
+        <Btn icon="check" onClick={submit} loading={saving} disabled={!serviceIds.length || !f.staff_id || deleting}>
           {saving ? 'Guardando…' : (f.id ? 'Guardar cambios' : 'Guardar Cita')}
         </Btn>
       </div>
