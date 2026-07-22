@@ -4,6 +4,7 @@ import { Icon, Btn, Modal, Field, Input, Select, ListLoading, Spinner, CAT_COLOR
 import PhotoCropEditor, { ASPECT_LANDING_CARD } from '../../components/PhotoCropEditor.jsx';
 import { api_services, api_service_photos } from '../../lib/api';
 import { fmtMoney } from '../../lib/money';
+import { fmtDuration } from '../../lib/duration';
 import {
   DndContext, PointerSensor, TouchSensor, KeyboardSensor,
   useSensor, useSensors, closestCenter,
@@ -162,7 +163,7 @@ function SortableServiceCard({ service: s, fmt, reorderMode, onClick }) {
         <div className="font-semibold text-sm mb-1">{s.name}</div>
         <p className="text-[11px] text-text-muted line-clamp-2 mb-2.5">{s.description}</p>
         <div className="flex justify-between items-center">
-          <span className="text-xs text-text-muted flex items-center gap-1"><Icon name="clock" size={12} /> {s.duration} min</span>
+          <span className="text-xs text-text-muted flex items-center gap-1"><Icon name="clock" size={12} /> {fmtDuration(s.duration)}</span>
           <span className="font-serif font-bold" style={{ color: CAT_COLORS[s.cat] }}>{fmt(s.price)}</span>
         </div>
       </div>

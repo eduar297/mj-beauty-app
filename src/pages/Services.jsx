@@ -4,6 +4,7 @@ import { Icon, Modal, Btn, ListLoading, CAT_COLORS, CAT_ICONS, BeforeAfterPair, 
 import PublicBookingForm from '../components/PublicBookingForm.jsx';
 import { api_services, api_service_photos } from '../lib/api';
 import { fmtMoney } from '../lib/money';
+import { fmtDuration as fmtDur } from '../lib/duration';
 
 export default function Services() {
   const { cat: paramCat } = useParams();
@@ -19,8 +20,8 @@ export default function Services() {
   // Helpers para mostrar rangos opcionales (e.g. "60-90 min", "$1.200 — $2.000").
   const fmtDuration = (s) =>
     s.duration_max && s.duration_max > s.duration
-      ? `${s.duration}–${s.duration_max} min`
-      : `${s.duration} min`;
+      ? `${fmtDur(s.duration)} – ${fmtDur(s.duration_max)}`
+      : fmtDur(s.duration);
   const fmtPrice = (s) =>
     s.price_max && Number(s.price_max) > Number(s.price)
       ? `${fmt(s.price)} — ${fmt(s.price_max)}`

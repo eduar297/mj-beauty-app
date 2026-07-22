@@ -4,6 +4,7 @@ import { Header } from '../Dashboard.jsx';
 import { Icon, Btn, Modal, Field, Input, Select, ListLoading } from '../../components/ui.jsx';
 import { api_appointments, api_services, api_staff, api_clients } from '../../lib/api';
 import ServicePicker from '../../components/ServicePicker.jsx';
+import { fmtDuration } from '../../lib/duration';
 import { useAuth } from '../../hooks/useAuth.jsx';
 
 // ── Constantes ────────────────────────────────────────────────────────
@@ -789,7 +790,7 @@ function ApptForm({ initial, services, staff, clients, defaultDate, onSaved, onD
         />
         {serviceIds.length > 0 && (
           <div className="text-[11px] text-text-muted mt-1.5">
-            {serviceIds.length} servicio{serviceIds.length > 1 ? 's' : ''} · {totalDuration} min en total
+            {serviceIds.length} servicio{serviceIds.length > 1 ? 's' : ''} · {fmtDuration(totalDuration)} en total
           </div>
         )}
       </Field>

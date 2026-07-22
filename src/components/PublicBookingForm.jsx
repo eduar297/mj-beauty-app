@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon, Field, Input, Btn } from './ui.jsx';
 import ServicePicker from './ServicePicker.jsx';
+import { fmtDuration } from '../lib/duration';
 import {
   api_appointments, api_clients, api_services, api_staff,
 } from '../lib/api';
@@ -225,7 +226,7 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
           {selectedIds.length > 0 && (
             <div className="-mt-2 mb-3 text-xs flex items-center justify-between gap-2">
               <span className="text-text-secondary">
-                {selectedIds.length} servicio{selectedIds.length > 1 ? 's' : ''} · {totalDuration} min en total
+                {selectedIds.length} servicio{selectedIds.length > 1 ? 's' : ''} · {fmtDuration(totalDuration)} en total
               </span>
               {selectedIds.length > 1 && <span className="text-gold">Se agenda todo en una cita</span>}
             </div>

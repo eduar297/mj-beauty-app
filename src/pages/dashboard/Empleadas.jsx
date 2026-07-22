@@ -3,6 +3,7 @@ import { Header } from '../Dashboard.jsx';
 import { Icon, Btn, Avatar, Modal, Field, Input, Select, ColorPicker, ListLoading, Spinner, CAT_COLORS } from '../../components/ui.jsx';
 import PhotoCropEditor, { ASPECT_SQUARE } from '../../components/PhotoCropEditor.jsx';
 import { api_staff, api_services, api_staff_services, api_time_off } from '../../lib/api';
+import { fmtDuration } from '../../lib/duration';
 import { DEFAULT_WEEKLY_HOURS, DAY_KEYS_ORDER, DAY_LABELS_ES, normalizeDayRanges } from '../../lib/availability.js';
 
 export default function Empleadas() {
@@ -276,7 +277,7 @@ function StaffForm({ initial, services, onSaved, onDelete }) {
                         ? { background: `${c}33`, color: c, borderColor: c }
                         : { borderColor: 'var(--border)' }}
                       className={`text-[11px] px-2.5 py-1 rounded-full border cursor-pointer transition ${on ? 'font-semibold' : 'text-text-muted hover:text-text-secondary hover:border-border-strong'}`}>
-                      {svc.name} <span className="opacity-60">· {svc.duration}min</span>
+                      {svc.name} <span className="opacity-60">· {fmtDuration(svc.duration)}</span>
                     </button>
                   );
                 })}

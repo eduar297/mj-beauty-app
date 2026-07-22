@@ -1,4 +1,5 @@
 import { Icon, CAT_COLORS, CAT_ICONS } from './ui.jsx';
+import { fmtDuration } from '../lib/duration';
 
 // Orden canónico de categorías de servicio (igual que en la landing / Servicios).
 const CAT_ORDER = ['Uñas', 'Pedicura', 'Pelo', 'Faciales', 'Cejas', 'Pestañas'];
@@ -37,7 +38,7 @@ export default function ServicePicker({ services, selectedIds, onToggle, maxHeig
                   {checked && <Icon name="check" size={11} color="#0d0c0a" />}
                 </span>
                 <span className="flex-1 min-w-0 text-sm truncate">{s.name}</span>
-                <span className="text-[11px] text-text-muted flex-shrink-0">{s.duration}min</span>
+                <span className="text-[11px] text-text-muted flex-shrink-0">{fmtDuration(s.duration)}</span>
               </button>
             );
           })}
