@@ -20,6 +20,7 @@ export function Icon({ name, size = 18, color = 'currentColor' }) {
     check: "M20 6L9 17l-5-5",
     close: "M18 6L6 18M6 6l12 12",
     edit: "M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z",
+    trash: "M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6h14zM10 11v6M14 11v6",
     clock: "M12 22a10 10 0 100-20 10 10 0 000 20zm0-14v4l3 3",
     sparkle: "M12 2l2 7h7l-5.5 4 2 7L12 16l-5.5 4 2-7L3 9h7z",
     nail: "M7 3h10l1 5-6 14-6-14z",

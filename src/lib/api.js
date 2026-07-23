@@ -381,16 +381,29 @@ export const api_appointments = {
 export const api_settings = {
   get: () => supabase.from('site_settings').select('*').eq('id', 1).maybeSingle(),
   update: async (data) => {
-    const payload = { ...data, updated_at: new Date().toISOString() };
+    let payload = { ...data, updated_at: new Date().toISOString() };
     let res = await supabase.from('site_settings').update(payload).eq('id', 1).select().single();
-    // Compat: si la BD todavía no tiene la columna service_cat_photos (migración
-    // pendiente), reintenta sin ella para no romper el guardado de configuración.
-    if (res.error && 'service_cat_photos' in payload && /service_cat_photos/.test(res.error.message || '')) {
-      const { service_cat_photos, ...rest } = payload;
-      res = await supabase.from('site_settings').update(rest).eq('id', 1).select().single();
+    // Compat: si la BD todavía no tiene alguna columna nueva (migración
+    // pendiente — service_cat_photos, usd_to_cup, fx_updated_at, fx_source…),
+    // PostgREST devuelve "Could not find the 'col' column". La quitamos y
+    // reintentamos, para no romper el guardado antes de correr el schema.
+    let guard = 0;
+    while (res.error && guard < 5) {
+      const col = (res.error.message || '').match(/'([a-z_]+)' column/i)?.[1];
+      if (!col || !(col in payload)) break;
+      const { [col]: _drop, ...rest } = payload;
+      payload = rest;
+      res = await supabase.from('site_settings').update(payload).eq('id', 1).select().single();
+      guard++;
     }
     return res;
   },
+  // Atajo para fijar la tasa del día (USD → CUP) a mano desde la Caja.
+  setRate: (rate) => api_settings.update({
+    usd_to_cup: Number(rate) || 0,
+    fx_updated_at: new Date().toISOString(),
+    fx_source: 'manual',
+  }),
 };
 
 // ─── TRANSACTIONS ────────────────────────────────────────────────────
@@ -400,7 +413,27 @@ export const api_transactions = {
     if (date) q = q.eq('date', date);
     return q.order('time', { ascending: false });
   },
-  create: (data) => supabase.from('transactions').insert(data).select().single(),
+  create: async (data) => {
+    let res = await supabase.from('transactions').insert(data).select().single();
+    // Compat: si la BD aún no tiene la columna service_ids (migración
+    // pendiente), reintenta sin ella para no romper el registro del pago.
+    // Nota: se dispara aunque service_ids sea null — enviar la clave de una
+    // columna inexistente también falla, así que basta con que esté presente.
+    if (res.error && 'service_ids' in data && /service_ids/.test(res.error.message || '')) {
+      const { service_ids, ...rest } = data;
+      res = await supabase.from('transactions').insert(rest).select().single();
+    }
+    return res;
+  },
+  update: async (id, data) => {
+    let res = await supabase.from('transactions').update(data).eq('id', id).select().single();
+    if (res.error && 'service_ids' in data && /service_ids/.test(res.error.message || '')) {
+      const { service_ids, ...rest } = data;
+      res = await supabase.from('transactions').update(rest).eq('id', id).select().single();
+    }
+    return res;
+  },
+  remove: (id) => supabase.from('transactions').delete().eq('id', id),
   subscribe: (callback) => {
     const name = `transactions_${Math.random().toString(36).slice(2, 9)}`;
     return supabase

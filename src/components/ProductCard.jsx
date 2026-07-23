@@ -1,5 +1,6 @@
 import { Icon, PROD_CAT_COLORS } from './ui.jsx';
 import { fmtMoney as fmt } from '../lib/money';
+import { useFx } from '../hooks/useFx.jsx';
 
 // Con stock ≤ LOW_STOCK (y > 0) se muestra "¡Últimas unidades!".
 export const LOW_STOCK = 3;
@@ -8,7 +9,9 @@ export const LOW_STOCK = 3;
 // WhatsApp con mensaje pre-armado; si el número no está configurado en
 // Personalización, el botón simplemente no se muestra.
 export default function ProductCard({ product: p, whatsapp }) {
+  const { fmtCup } = useFx();
   const color = PROD_CAT_COLORS[p.cat] || 'var(--gold)';
+  const cup = fmtCup(p.price);
   const out = (p.stock ?? 0) <= 0;
   const low = !out && p.stock <= LOW_STOCK;
   const waHref = whatsapp
@@ -36,7 +39,10 @@ export default function ProductCard({ product: p, whatsapp }) {
       <div className="p-4 flex flex-col flex-1">
         <div className="flex justify-between items-start mb-1 gap-2">
           <div className="font-semibold text-sm min-w-0">{p.name}</div>
-          <div className="font-serif font-bold flex-shrink-0 text-right" style={{ color }}>{fmt(p.price)}</div>
+          <div className="flex-shrink-0 text-right">
+            <div className="font-serif font-bold" style={{ color }}>{fmt(p.price)}</div>
+            {cup && <div className="text-[10px] text-text-muted mt-0.5">{cup}</div>}
+          </div>
         </div>
         <div className="text-[10px] uppercase tracking-widest text-text-muted mb-2">{p.cat}</div>
         {p.description && (

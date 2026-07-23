@@ -5,6 +5,7 @@ import PublicBookingForm from '../components/PublicBookingForm.jsx';
 import { api_services, api_service_photos } from '../lib/api';
 import { fmtMoney } from '../lib/money';
 import { fmtDuration as fmtDur } from '../lib/duration';
+import { useFx } from '../hooks/useFx.jsx';
 
 export default function Services() {
   const { cat: paramCat } = useParams();
@@ -26,6 +27,15 @@ export default function Services() {
     s.price_max && Number(s.price_max) > Number(s.price)
       ? `${fmt(s.price)} — ${fmt(s.price_max)}`
       : fmt(s.price);
+  // Equivalente en pesos cubanos (si hay tasa configurada).
+  const fx = useFx();
+  const fmtPriceCup = (s) => {
+    const lo = fx.fmtCup(s.price);
+    if (!lo) return '';
+    return s.price_max && Number(s.price_max) > Number(s.price)
+      ? `${lo} — ${fx.fmtCup(s.price_max)}`
+      : lo;
+  };
 
   useEffect(() => {
     api_services.listPublic().then(({ data }) => setServices(data || []));
@@ -109,8 +119,9 @@ export default function Services() {
                   <div className="p-4 flex flex-col flex-1">
                     <div className="flex justify-between items-start mb-2 gap-2">
                       <div className="font-semibold min-w-0">{s.name}</div>
-                      <div className="font-serif font-bold text-lg flex-shrink-0 text-right" style={{ color }}>
-                        {fmtPrice(s)}
+                      <div className="flex-shrink-0 text-right">
+                        <div className="font-serif font-bold text-lg" style={{ color }}>{fmtPrice(s)}</div>
+                        {fmtPriceCup(s) && <div className="text-[10px] text-text-muted mt-0.5">{fmtPriceCup(s)}</div>}
                       </div>
                     </div>
                     <div className="flex items-center gap-1 text-xs text-text-muted mb-2.5">
@@ -173,6 +184,7 @@ export default function Services() {
             fallbackImg={SVC_IMGS[detailService.cat]}
             color={CAT_COLORS[detailService.cat]}
             fmtPrice={fmtPrice}
+            fmtPriceCup={fmtPriceCup}
             fmtDuration={fmtDuration}
             onOpenPhoto={(photoId) => openLightboxFor(detailService.id, photoId)}
             onReserve={() => { const name = detailService.name; setDetailService(null); setBookingService(name); }}
@@ -185,7 +197,7 @@ export default function Services() {
   );
 }
 
-function ServiceDetail({ service, photos, fallbackImg, color, fmtPrice, fmtDuration, onOpenPhoto, onReserve }) {
+function ServiceDetail({ service, photos, fallbackImg, color, fmtPrice, fmtPriceCup, fmtDuration, onOpenPhoto, onReserve }) {
   const heroSrc = service.photo_url || fallbackImg;
   return (
     <div>
@@ -211,7 +223,10 @@ function ServiceDetail({ service, photos, fallbackImg, color, fmtPrice, fmtDurat
       {/* Precio + duración + categoría */}
       <div className="flex items-baseline justify-between gap-3 mb-3">
         <div className="text-xs uppercase tracking-widest text-text-muted">{service.cat}</div>
-        <div className="font-serif font-bold text-xl" style={{ color }}>{fmtPrice(service)}</div>
+        <div className="text-right">
+          <div className="font-serif font-bold text-xl" style={{ color }}>{fmtPrice(service)}</div>
+          {fmtPriceCup(service) && <div className="text-[11px] text-text-muted mt-0.5">{fmtPriceCup(service)}</div>}
+        </div>
       </div>
       <div className="flex items-center gap-1.5 text-sm text-text-secondary mb-4">
         <Icon name="clock" size={14} /> {fmtDuration(service)}

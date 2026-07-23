@@ -146,6 +146,14 @@ insert into site_settings (id) values (1) on conflict do nothing;
 -- Personalización; la landing usa el fallback /assets/svc-*.jpeg si falta.
 alter table site_settings add column if not exists service_cat_photos jsonb default '{}'::jsonb;
 
+-- Migration: tasa de cambio USD → CUP (pesos cubanos). La app muestra los
+-- precios en dólares y su equivalente en CUP usando esta tasa. Se edita a
+-- mano desde la Caja, o se actualiza sola con El Toque (ver bloque al final).
+-- usd_to_cup = cuántos CUP vale 1 USD.
+alter table site_settings add column if not exists usd_to_cup numeric(12,2) default 0;
+alter table site_settings add column if not exists fx_updated_at timestamptz;
+alter table site_settings add column if not exists fx_source text; -- 'manual' | 'eltoque'
+
 -- ───── Tabla: transactions (caja) ───────────────────────────────────
 create table if not exists transactions (
   id uuid primary key default uuid_generate_v4(),
@@ -159,6 +167,11 @@ create table if not exists transactions (
   time time default current_time,
   created_at timestamptz default now()
 );
+
+-- Migration: un pago puede cubrir varios servicios (uñas + pestañas). Guardamos
+-- los ids en un array; service_name conserva los nombres unidos ("A + B") para
+-- mostrar. amount es el total cobrado (editable, por si hay descuento).
+alter table transactions add column if not exists service_ids uuid[];
 
 -- ───── Tabla: staff_services (relación N-N entre empleadas y servicios) ─
 create table if not exists staff_services (
@@ -662,6 +675,79 @@ revoke execute on function tg_daily_summary() from anon, authenticated;
 -- 11:00 UTC ≈ 7:00 AM en Cuba (horario de verano; en invierno serían las 6:00).
 -- cron.schedule es idempotente por nombre: re-correr esto solo actualiza el job.
 select cron.schedule('mj_resumen_manana', '0 11 * * *', $$select tg_daily_summary()$$);
+
+-- ───── Tasa del dólar automática: El Toque (TRMI) ──────────────────
+-- OPCIONAL. Trae la tasa informal USD→CUP de El Toque una vez al día y la
+-- guarda en site_settings.usd_to_cup. Si no configuras el token, no hace
+-- nada y sigues poniendo la tasa a mano desde la Caja.
+--
+-- Cómo activarlo:
+--   1) Pide tu token gratis en https://tasas.eltoque.com  (formulario de acceso).
+--   2) Guárdalo (una vez, no lo subas a git):
+--        update fx_config set eltoque_token = '<TU_TOKEN>';
+--   3) Ya. El cron corre solo cada mañana. Para probar al instante:
+--        select fx_eltoque_fetch();   -- espera ~10s
+--        select fx_eltoque_apply();   -- aplica la tasa recibida
+--
+-- pg_net es asíncrono (dispara la petición y la respuesta llega después),
+-- por eso son dos pasos: uno pide, otro (minutos más tarde) lee y aplica.
+create extension if not exists pg_net;
+create extension if not exists pg_cron;
+
+create table if not exists fx_config (
+  id boolean primary key default true check (id),   -- fila única
+  eltoque_token text,
+  last_request_id bigint
+);
+alter table fx_config enable row level security;   -- sin políticas: anon no la lee
+insert into fx_config (id) values (true) on conflict do nothing;
+
+-- Paso 1: dispara la petición GET a El Toque con la fecha de hoy (Cuba).
+create or replace function fx_eltoque_fetch() returns void
+language plpgsql security definer set search_path = public as $$
+declare tok text; rid bigint; d text; url text;
+begin
+  select eltoque_token into tok from fx_config where id;
+  if tok is null or tok = '' then return; end if;
+  d := to_char((now() at time zone 'America/Havana')::date, 'YYYY-MM-DD');
+  -- Rango del día; los espacios van como %20.
+  url := 'https://tasas.eltoque.com/v1/trmi'
+      || '?date_from=' || d || '%2000:00:00'
+      || '&date_to='   || d || '%2023:59:59';
+  select net.http_get(
+    url := url,
+    headers := jsonb_build_object('Authorization', 'Bearer ' || tok)
+  ) into rid;
+  update fx_config set last_request_id = rid where id;
+exception when others then null;
+end $$;
+
+-- Paso 2: lee la respuesta de la última petición y aplica tasas.USD.
+create or replace function fx_eltoque_apply() returns void
+language plpgsql security definer set search_path = public as $$
+declare rid bigint; v_status int; v_content text; usd numeric;
+begin
+  select last_request_id into rid from fx_config where id;
+  if rid is null then return; end if;
+  select status_code, content into v_status, v_content
+    from net._http_response where id = rid;
+  if v_status = 200 and v_content is not null then
+    usd := (v_content::jsonb -> 'tasas' ->> 'USD')::numeric;
+    if usd is not null and usd > 0 then
+      update site_settings
+        set usd_to_cup = round(usd, 2), fx_updated_at = now(), fx_source = 'eltoque'
+        where id = 1;
+    end if;
+  end if;
+exception when others then null;
+end $$;
+
+revoke execute on function fx_eltoque_fetch() from anon, authenticated;
+revoke execute on function fx_eltoque_apply() from anon, authenticated;
+
+-- 12:10 y 12:15 UTC ≈ 8:10 / 8:15 AM en Cuba (verano). Idempotente por nombre.
+select cron.schedule('mj_fx_fetch', '10 12 * * *', $$select fx_eltoque_fetch()$$);
+select cron.schedule('mj_fx_apply', '15 12 * * *', $$select fx_eltoque_apply()$$);
 
 -- ───── Seed: un admin inicial ───────────────────────────────────────
 -- IMPORTANTE: cambia este PIN después de crear todo

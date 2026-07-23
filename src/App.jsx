@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './hooks/useAuth.jsx';
+import { FxProvider } from './hooks/useFx.jsx';
 import Landing from './pages/Landing.jsx';
 import Services from './pages/Services.jsx';
 import Productos from './pages/Productos.jsx';
@@ -26,6 +27,7 @@ export default function App() {
 
   return (
     <AuthProvider>
+      <FxProvider>
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/servicios" element={<Services />} />
@@ -36,6 +38,7 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/dashboard/*" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
       </Routes>
+      </FxProvider>
     </AuthProvider>
   );
 }
