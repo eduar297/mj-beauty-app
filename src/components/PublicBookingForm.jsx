@@ -115,6 +115,14 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
   }, [step, date, allStaff.length]);
 
   const submit = async () => {
+    // Red de seguridad: nunca mandamos una cita sin los datos de la clienta,
+    // aunque se llegue aquí por un camino raro.
+    const digits = phone.replace(/\D/g, '');
+    if (digits.length < 8 || (name.trim().match(/\p{L}/gu) || []).length < 3 || selectedIds.length === 0) {
+      setErr('Completa tu nombre, tu teléfono y al menos un servicio.');
+      setStep(1);
+      return;
+    }
     setErr('');
     setSubmitting(true);
     try {
@@ -166,7 +174,22 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
     </div>
   );
 
-  const canContinue = phone.replace(/\D/g, '').length >= 7 && name.trim() && selectedIds.length > 0;
+  // Validación de los datos de la clienta. Antes entraban reservas sin nombre
+  // real (aparecían como "Cliente" en la agenda) o con teléfonos incompletos,
+  // así que ahora exigimos un nombre con letras de verdad y un móvil completo.
+  const phoneDigits = phone.replace(/\D/g, '');
+  const cleanName = name.trim();
+  const phoneOk = phoneDigits.length >= 8;                       // móvil cubano = 8 dígitos
+  const nameOk = (cleanName.match(/\p{L}/gu) || []).length >= 3;  // al menos 3 letras
+  const servicesOk = selectedIds.length > 0;
+  const canContinue = phoneOk && nameOk && servicesOk;
+  // Qué le falta a la clienta, para no dejarla adivinando por qué está trabado.
+  const missing = [
+    !nameOk && 'tu nombre',
+    !phoneOk && 'un teléfono de 8 dígitos',
+    !servicesOk && 'al menos un servicio',
+  ].filter(Boolean);
+  const touched = phone !== '' || name !== '' || selectedIds.length > 0;
   const canConfirm = date && time && !submitting;
 
   return (
@@ -180,7 +203,7 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
           <Field label="Teléfono">
             <Input value={phone} type="tel"
               onChange={e => setPhone(e.target.value)}
-              placeholder="+57 300 000 0000" />
+              placeholder="5 123 4567" />
           </Field>
 
           {/* Hint contextual sobre si la clienta es conocida o nueva */}
@@ -190,7 +213,7 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
                 <span className="text-text-muted">Buscando…</span>
               ) : existingClient ? (
                 <span className="text-gold">👋 ¡Hola de nuevo, {existingClient.name}!</span>
-              ) : phone.replace(/\D/g, '').length >= 7 ? (
+              ) : phoneOk ? (
                 <span className="text-text-muted">¿Es tu primera vez? Tu información quedará guardada para próximas citas.</span>
               ) : null}
             </div>
@@ -229,6 +252,12 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
                 {selectedIds.length} servicio{selectedIds.length > 1 ? 's' : ''} · {fmtDuration(totalDuration)} en total
               </span>
               {selectedIds.length > 1 && <span className="text-gold">Se agenda todo en una cita</span>}
+            </div>
+          )}
+
+          {touched && missing.length > 0 && (
+            <div className="-mt-1 mb-3 text-xs text-text-muted">
+              Para continuar falta: <span className="text-gold">{missing.join(' · ')}</span>
             </div>
           )}
 

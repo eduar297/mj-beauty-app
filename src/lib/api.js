@@ -398,12 +398,16 @@ export const api_settings = {
     }
     return res;
   },
-  // Atajo para fijar la tasa del día (USD → CUP) a mano desde la Caja.
+  // Fija la tasa del día (USD → CUP) a mano desde la Caja. Marcarla como
+  // 'manual' hace que el cron automático deje de pisarla.
   setRate: (rate) => api_settings.update({
     usd_to_cup: Number(rate) || 0,
     fx_updated_at: new Date().toISOString(),
     fx_source: 'manual',
   }),
+  // Devuelve el control al cron: en la próxima pasada (máx. 1 h) vuelve a
+  // traer la tasa del mercado informal.
+  setAutoRate: () => api_settings.update({ fx_source: 'auto' }),
 };
 
 // ─── TRANSACTIONS ────────────────────────────────────────────────────

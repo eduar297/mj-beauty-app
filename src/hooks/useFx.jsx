@@ -9,27 +9,39 @@ import { fmtMoney, fmtCup, fmtDual } from '../lib/money';
 // con setRate() para que todo se refresque sin recargar.
 const FxContext = createContext({
   rate: 0,
+  source: 'auto',
+  updatedAt: null,
   ready: false,
   setRate: () => {},
+  setSource: () => {},
   fmtDual: (usd) => fmtMoney(usd),
   fmtCup: () => '',
 });
 
 export function FxProvider({ children }) {
   const [rate, setRate] = useState(0);
+  // 'auto' = la trae sola el cron desde la API pública; 'manual' = la fijó
+  // la administradora desde la Caja (y el cron no la pisa).
+  const [source, setSource] = useState('auto');
+  const [updatedAt, setUpdatedAt] = useState(null);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     api_settings.get().then(({ data }) => {
       setRate(Number(data?.usd_to_cup) || 0);
+      setSource(data?.fx_source || 'auto');
+      setUpdatedAt(data?.fx_updated_at || null);
       setReady(true);
     }).catch(() => setReady(true));
   }, []);
 
   const value = {
     rate,
+    source,
+    updatedAt,
     ready,
     setRate,
+    setSource,
     fmtDual: (usd) => fmtDual(usd, rate),
     fmtCup: (usd) => fmtCup(usd, rate),
   };

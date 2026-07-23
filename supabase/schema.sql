@@ -676,78 +676,105 @@ revoke execute on function tg_daily_summary() from anon, authenticated;
 -- cron.schedule es idempotente por nombre: re-correr esto solo actualiza el job.
 select cron.schedule('mj_resumen_manana', '0 11 * * *', $$select tg_daily_summary()$$);
 
--- ───── Tasa del dólar automática: El Toque (TRMI) ──────────────────
--- OPCIONAL. Trae la tasa informal USD→CUP de El Toque una vez al día y la
--- guarda en site_settings.usd_to_cup. Si no configuras el token, no hace
--- nada y sigues poniendo la tasa a mano desde la Caja.
+-- ───── Tasa del dólar automática (mercado informal) ────────────────
+-- Trae sola la tasa USD→CUP del mercado informal cada hora y la guarda en
+-- site_settings.usd_to_cup. NO necesita token ni registro: usa la API
+-- pública de cambiocuba.money (mismo cálculo TRMI que publica El Toque).
+--   GET https://api.cambiocuba.money/api/v1/x-rates-by-date-range
+--       ?trmi=true&cur=USD&date_from=<hoy> 00:00:00&date_to=<hoy> 23:59:59
+--   → [{ "_id":"2026-07-23", "median":670.0, "avg":668.12, "last":{...} }]
+-- Tomamos la MEDIANA del día (la más estable frente a ofertas atípicas).
 --
--- Cómo activarlo:
---   1) Pide tu token gratis en https://tasas.eltoque.com  (formulario de acceso).
---   2) Guárdalo (una vez, no lo subas a git):
---        update fx_config set eltoque_token = '<TU_TOKEN>';
---   3) Ya. El cron corre solo cada mañana. Para probar al instante:
---        select fx_eltoque_fetch();   -- espera ~10s
---        select fx_eltoque_apply();   -- aplica la tasa recibida
+-- Manual gana sobre automático: si pones la tasa a mano desde la Caja,
+-- fx_source queda en 'manual' y el cron deja de pisarla, hasta que toques
+-- "volver a automática".
+--
+-- Para probarlo al instante (sin esperar al cron):
+--     select fx_rate_fetch();   -- espera ~10 segundos
+--     select fx_rate_apply();
+--     select usd_to_cup, fx_source, fx_updated_at from site_settings where id = 1;
 --
 -- pg_net es asíncrono (dispara la petición y la respuesta llega después),
--- por eso son dos pasos: uno pide, otro (minutos más tarde) lee y aplica.
+-- por eso son dos pasos: uno pide y el otro lee/aplica.
 create extension if not exists pg_net;
 create extension if not exists pg_cron;
 
 create table if not exists fx_config (
   id boolean primary key default true check (id),   -- fila única
-  eltoque_token text,
   last_request_id bigint
 );
 alter table fx_config enable row level security;   -- sin políticas: anon no la lee
+alter table fx_config add column if not exists last_request_id bigint;
+alter table fx_config drop column if exists eltoque_token;  -- ya no hace falta
 insert into fx_config (id) values (true) on conflict do nothing;
 
--- Paso 1: dispara la petición GET a El Toque con la fecha de hoy (Cuba).
-create or replace function fx_eltoque_fetch() returns void
+-- Paso 1: dispara la petición GET con la fecha de hoy (hora de Cuba).
+create or replace function fx_rate_fetch() returns void
 language plpgsql security definer set search_path = public as $$
-declare tok text; rid bigint; d text; url text;
+declare rid bigint; d text; url text;
 begin
-  select eltoque_token into tok from fx_config where id;
-  if tok is null or tok = '' then return; end if;
   d := to_char((now() at time zone 'America/Havana')::date, 'YYYY-MM-DD');
-  -- Rango del día; los espacios van como %20.
-  url := 'https://tasas.eltoque.com/v1/trmi'
-      || '?date_from=' || d || '%2000:00:00'
+  -- Los espacios de la fecha van codificados como %20.
+  url := 'https://api.cambiocuba.money/api/v1/x-rates-by-date-range'
+      || '?trmi=true&cur=USD'
+      || '&date_from=' || d || '%2000:00:00'
       || '&date_to='   || d || '%2023:59:59';
-  select net.http_get(
-    url := url,
-    headers := jsonb_build_object('Authorization', 'Bearer ' || tok)
-  ) into rid;
+  select net.http_get(url := url) into rid;
   update fx_config set last_request_id = rid where id;
 exception when others then null;
 end $$;
 
--- Paso 2: lee la respuesta de la última petición y aplica tasas.USD.
-create or replace function fx_eltoque_apply() returns void
+-- Paso 2: lee la respuesta de la última petición y aplica la mediana.
+create or replace function fx_rate_apply() returns void
 language plpgsql security definer set search_path = public as $$
-declare rid bigint; v_status int; v_content text; usd numeric;
+declare rid bigint; v_status int; v_content text; j jsonb; ult jsonb; usd numeric;
 begin
   select last_request_id into rid from fx_config where id;
   if rid is null then return; end if;
+
+  -- Respeta la tasa puesta a mano: no la pisamos.
+  if exists (select 1 from site_settings where id = 1 and fx_source = 'manual') then
+    return;
+  end if;
+
   select status_code, content into v_status, v_content
     from net._http_response where id = rid;
-  if v_status = 200 and v_content is not null then
-    usd := (v_content::jsonb -> 'tasas' ->> 'USD')::numeric;
-    if usd is not null and usd > 0 then
-      update site_settings
-        set usd_to_cup = round(usd, 2), fx_updated_at = now(), fx_source = 'eltoque'
-        where id = 1;
-    end if;
+  if v_status is distinct from 200 or v_content is null then return; end if;
+
+  j := v_content::jsonb;
+  if jsonb_typeof(j) <> 'array' or jsonb_array_length(j) = 0 then return; end if;
+  ult := j -> (jsonb_array_length(j) - 1);           -- el día más reciente
+
+  usd := nullif(ult ->> 'median', '')::numeric;
+  if usd is null or usd <= 0 then
+    usd := nullif(ult -> 'last' ->> 'value', '')::numeric;   -- respaldo
+  end if;
+
+  if usd is not null and usd > 0 then
+    update site_settings
+      set usd_to_cup = round(usd, 2), fx_updated_at = now(), fx_source = 'auto'
+      where id = 1;
   end if;
 exception when others then null;
 end $$;
 
-revoke execute on function fx_eltoque_fetch() from anon, authenticated;
-revoke execute on function fx_eltoque_apply() from anon, authenticated;
+-- Un solo job por hora: aplica lo que se pidió la vez anterior y deja
+-- pedida la siguiente. Así la tasa nunca se atrasa más de una hora.
+create or replace function fx_rate_tick() returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  perform fx_rate_apply();
+  perform fx_rate_fetch();
+end $$;
 
--- 12:10 y 12:15 UTC ≈ 8:10 / 8:15 AM en Cuba (verano). Idempotente por nombre.
-select cron.schedule('mj_fx_fetch', '10 12 * * *', $$select fx_eltoque_fetch()$$);
-select cron.schedule('mj_fx_apply', '15 12 * * *', $$select fx_eltoque_apply()$$);
+revoke execute on function fx_rate_fetch() from anon, authenticated;
+revoke execute on function fx_rate_apply() from anon, authenticated;
+revoke execute on function fx_rate_tick()  from anon, authenticated;
+
+-- Cada hora al minuto 7. cron.schedule es idempotente por nombre.
+select cron.unschedule('mj_fx_fetch') where exists (select 1 from cron.job where jobname = 'mj_fx_fetch');
+select cron.unschedule('mj_fx_apply') where exists (select 1 from cron.job where jobname = 'mj_fx_apply');
+select cron.schedule('mj_fx_tick', '7 * * * *', $$select fx_rate_tick()$$);
 
 -- ───── Seed: un admin inicial ───────────────────────────────────────
 -- IMPORTANTE: cambia este PIN después de crear todo

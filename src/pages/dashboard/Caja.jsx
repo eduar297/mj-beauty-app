@@ -105,10 +105,11 @@ export default function Caja() {
 // Tasa del día USD → CUP: editable a mano en un toque. Se guarda en
 // site_settings y se propaga a toda la app vía el contexto FX.
 function RateChip() {
-  const { rate, setRate } = useFx();
+  const { rate, source, setRate, setSource } = useFx();
   const [editing, setEditing] = useState(false);
   const [val, setVal] = useState('');
   const [saving, setSaving] = useState(false);
+  const isManual = source === 'manual';
 
   const open = () => { setVal(rate ? String(rate) : ''); setEditing(true); };
   const save = async () => {
@@ -116,7 +117,11 @@ function RateChip() {
     const r = Number(val) || 0;
     const res = await api_settings.setRate(r);
     setSaving(false);
-    if (!res.error) { setRate(r); setEditing(false); }
+    if (!res.error) { setRate(r); setSource('manual'); setEditing(false); }
+  };
+  const backToAuto = async () => {
+    const res = await api_settings.setAutoRate();
+    if (!res.error) setSource('auto');
   };
 
   return (
@@ -134,16 +139,29 @@ function RateChip() {
           <button type="button" onClick={() => setEditing(false)} className="text-xs text-text-muted hover:text-text-secondary underline cursor-pointer">Cancelar</button>
         </div>
       ) : (
-        <button type="button" onClick={open} className="flex items-center gap-2 flex-1 min-w-0 text-left cursor-pointer group">
-          <span className="text-sm">
-            {rate > 0
-              ? <>Tasa del día: <span className="font-bold">1 USD = {new Intl.NumberFormat('es-CU').format(rate)} CUP</span></>
-              : <span className="text-text-muted">Definir tasa del dólar (USD → CUP)</span>}
-          </span>
-          <span className="text-text-muted group-hover:text-gold ml-auto flex items-center gap-1 text-xs whitespace-nowrap">
-            <Icon name="edit" size={13} /> editar
-          </span>
-        </button>
+        <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
+          <button type="button" onClick={open} className="flex items-center gap-2 flex-1 min-w-0 text-left cursor-pointer group">
+            <span className="text-sm">
+              {rate > 0
+                ? <>Tasa del día: <span className="font-bold">1 USD = {new Intl.NumberFormat('es-CU').format(rate)} CUP</span></>
+                : <span className="text-text-muted">Definir tasa del dólar (USD → CUP)</span>}
+            </span>
+            <span className={`text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-md border whitespace-nowrap ${
+              isManual ? 'text-text-muted border-border' : 'text-gold border-gold/40 bg-gold-dim'
+            }`}>
+              {isManual ? 'manual' : 'automática'}
+            </span>
+            <span className="text-text-muted group-hover:text-gold ml-auto flex items-center gap-1 text-xs whitespace-nowrap">
+              <Icon name="edit" size={13} /> editar
+            </span>
+          </button>
+          {isManual && (
+            <button type="button" onClick={backToAuto}
+              className="text-xs text-gold underline underline-offset-2 cursor-pointer whitespace-nowrap">
+              volver a automática
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
