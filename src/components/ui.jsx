@@ -16,6 +16,7 @@ export function Icon({ name, size = 18, color = 'currentColor' }) {
     bell: "M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0",
     chevronLeft: "M15 18l-6-6 6-6",
     chevronRight: "M9 18l6-6-6-6",
+    chevronsLeft: "M11 17l-5-5 5-5M18 17l-5-5 5-5",
     star: "M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z",
     check: "M20 6L9 17l-5-5",
     close: "M18 6L6 18M6 6l12 12",

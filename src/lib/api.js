@@ -118,10 +118,13 @@ export const api_services = {
   // sort_order = i a cada uno. Solo se hace para los IDs pasados (típico:
   // todos los servicios de una categoría), así no toca otras categorías.
   reorder: async (orderedIds) => {
-    // updates secuenciales — la tabla es pequeña (decenas de servicios).
-    for (let i = 0; i < orderedIds.length; i++) {
-      await supabase.from('services').update({ sort_order: i }).eq('id', orderedIds[i]);
-    }
+    // En paralelo: mover una tarjeta al inicio reasigna TODOS los sort_order,
+    // y en secuencia eso serían decenas de viajes encadenados al servidor.
+    const res = await Promise.all(orderedIds.map((id, i) =>
+      supabase.from('services').update({ sort_order: i }).eq('id', id)
+    ));
+    const failed = res.find(r => r.error);
+    if (failed) throw failed.error;
     return { ok: true };
   },
   uploadPhoto: async (file, name, serviceId) => {
@@ -203,10 +206,13 @@ export const api_products = {
   update: (id, data) => supabase.from('products').update(data).eq('id', id).select().single(),
   remove: (id) => supabase.from('products').update({ active: false }).eq('id', id),
   reorder: async (orderedIds) => {
-    // updates secuenciales — la tabla es pequeña (decenas de productos).
-    for (let i = 0; i < orderedIds.length; i++) {
-      await supabase.from('products').update({ sort_order: i }).eq('id', orderedIds[i]);
-    }
+    // En paralelo: mover una tarjeta al inicio reasigna TODOS los sort_order,
+    // y en secuencia eso serían decenas de viajes encadenados al servidor.
+    const res = await Promise.all(orderedIds.map((id, i) =>
+      supabase.from('products').update({ sort_order: i }).eq('id', id)
+    ));
+    const failed = res.find(r => r.error);
+    if (failed) throw failed.error;
     return { ok: true };
   },
   // Suma/resta unidades clampando en 0 (la BD tiene check stock >= 0).

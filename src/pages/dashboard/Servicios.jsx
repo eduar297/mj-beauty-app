@@ -5,15 +5,11 @@ import PhotoCropEditor, { ASPECT_LANDING_CARD } from '../../components/PhotoCrop
 import { api_services, api_service_photos } from '../../lib/api';
 import { fmtMoney } from '../../lib/money';
 import { fmtDuration } from '../../lib/duration';
+import { DndContext, closestCenter } from '@dnd-kit/core';
+import { SortableContext, arrayMove, rectSortingStrategy } from '@dnd-kit/sortable';
 import {
-  DndContext, PointerSensor, TouchSensor, KeyboardSensor,
-  useSensor, useSensors, closestCenter,
-} from '@dnd-kit/core';
-import {
-  SortableContext, arrayMove, rectSortingStrategy,
-  useSortable, sortableKeyboardCoordinates,
-} from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
+  useReorderSensors, useSortableCard, ReorderControls, ReorderHint, AUTO_SCROLL,
+} from '../../components/reorder.jsx';
 
 const CATS = ['Uñas','Pedicura','Pelo','Faciales','Cejas','Pestañas'];
 
@@ -32,32 +28,36 @@ export default function Servicios() {
 
   const filtered = (list || []).filter(s => s.cat === activeCat);
 
-  // Sensores: pointer (mouse) requiere desplazamiento mínimo para no romper
-  // los taps; touch requiere mantener presionado 200ms para distinguir scroll.
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
+  const sensors = useReorderSensors();
 
-  const handleDragEnd = async (event) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = filtered.findIndex(s => s.id === active.id);
-    const newIndex = filtered.findIndex(s => s.id === over.id);
-    if (oldIndex < 0 || newIndex < 0) return;
-    // Reordenar localmente para feedback inmediato
-    const newOrderForCat = arrayMove(filtered, oldIndex, newIndex);
-    // Aplicar al estado global manteniendo el resto de categorías intactas
+  // Aplica un orden nuevo para la categoría activa: primero al estado local
+  // (feedback inmediato) y luego a la BD en background.
+  const applyOrder = async (newOrderForCat) => {
     setList(prev => {
       const others = (prev || []).filter(s => s.cat !== activeCat);
       // Reasignar sort_order localmente para que coincida con la BD
       const updated = newOrderForCat.map((s, i) => ({ ...s, sort_order: i }));
       return [...others, ...updated];
     });
-    // Persistir en background
     try { await api_services.reorder(newOrderForCat.map(s => s.id)); }
     catch (e) { console.error('Error al reordenar:', e); load(); /* re-sync */ }
+  };
+
+  const handleDragEnd = (event) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    const oldIndex = filtered.findIndex(s => s.id === active.id);
+    const newIndex = filtered.findIndex(s => s.id === over.id);
+    if (oldIndex < 0 || newIndex < 0) return;
+    applyOrder(arrayMove(filtered, oldIndex, newIndex));
+  };
+
+  // Mover sin arrastrar (botones "al inicio" / ← / →).
+  const moveTo = (id, target) => {
+    const oldIndex = filtered.findIndex(s => s.id === id);
+    const newIndex = Math.max(0, Math.min(filtered.length - 1, target));
+    if (oldIndex < 0 || oldIndex === newIndex) return;
+    applyOrder(arrayMove(filtered, oldIndex, newIndex));
   };
 
   return (
@@ -92,21 +92,20 @@ export default function Servicios() {
         })}
       </div>
 
-      {reorderMode && (
-        <div className="mb-3 text-xs text-text-muted bg-gold/10 border border-gold/30 rounded-lg px-3 py-2">
-          Modo reordenar activo — arrastra las tarjetas para cambiar el orden. Los cambios se guardan automáticamente.
-        </div>
-      )}
+      {reorderMode && <ReorderHint />}
 
       {list === null ? (
         <ListLoading label="Cargando servicios…" />
       ) : (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <DndContext sensors={sensors} collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd} autoScroll={AUTO_SCROLL}>
           <SortableContext items={filtered.map(s => s.id)} strategy={rectSortingStrategy}>
             <div className="grid gap-3.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
-              {filtered.map(s => (
+              {filtered.map((s, i) => (
                 <SortableServiceCard key={s.id} service={s} fmt={fmt}
                   reorderMode={reorderMode}
+                  index={i} total={filtered.length}
+                  onMove={(target) => moveTo(s.id, target)}
                   onClick={() => !reorderMode && setEditing({ ...s })} />
               ))}
               {filtered.length === 0 && <div className="col-span-full text-center text-text-muted py-10 text-sm">Sin servicios en {activeCat}</div>}
@@ -128,36 +127,27 @@ export default function Servicios() {
   );
 }
 
-// Tarjeta de servicio sortable. En modo normal el click abre el editor;
-// en modo reordenar muestra una manija y el drag mueve la tarjeta.
-function SortableServiceCard({ service: s, fmt, reorderMode, onClick }) {
-  const {
-    attributes, listeners, setNodeRef, transform, transition, isDragging,
-  } = useSortable({ id: s.id });
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-    zIndex: isDragging ? 50 : 'auto',
-  };
-  // En modo reordenar todo el card es la manija; sin modo, solo abre el editor.
+// Tarjeta de servicio sortable. En modo normal el click abre el editor; en
+// modo reordenar aparece la manija (lo único que arrastra) y los botones para
+// mover. La tarjeta NO lleva touch-none: así el dedo puede seguir haciendo
+// scroll sobre la lista mientras se reordena.
+function SortableServiceCard({ service: s, fmt, reorderMode, index, total, onMove, onClick }) {
+  const { setNodeRef, style, isDragging, handleProps } = useSortableCard(s.id);
   return (
     <div ref={setNodeRef} style={style}
-      {...(reorderMode ? { ...attributes, ...listeners } : {})}
       onClick={!reorderMode ? onClick : undefined}
       className={`bg-bg-card border rounded-2xl overflow-hidden transition relative ${
         reorderMode
-          ? 'border-gold/40 cursor-grab active:cursor-grabbing touch-none select-none ring-2 ring-gold/20'
+          ? 'border-gold/40 select-none ring-2 ring-gold/20'
           : 'border-border cursor-pointer hover:-translate-y-0.5 motion-reduce:transform-none'
       } ${isDragging ? 'shadow-2xl' : ''}`}>
       {reorderMode && (
-        <div className="absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-gold text-[#0d0c0a] grid place-items-center shadow-md pointer-events-none">
-          <Icon name="menu" size={14} />
-        </div>
+        <ReorderControls handleProps={handleProps} index={index} total={total}
+          onMove={onMove} name={s.name} />
       )}
       <div className="h-24 bg-bg-elevated relative">
         {s.photo_url && <img src={s.photo_url} alt="" loading="lazy" draggable={false} className="w-full h-full object-cover" />}
-        {s.popular && <div style={{ background: CAT_COLORS[s.cat] + 'cc' }} className="absolute top-2 left-2 text-[9px] font-bold text-[#0d0c0a] px-2 py-0.5 rounded-full uppercase">Popular</div>}
+        {s.popular && !reorderMode && <div style={{ background: CAT_COLORS[s.cat] + 'cc' }} className="absolute top-2 left-2 text-[9px] font-bold text-[#0d0c0a] px-2 py-0.5 rounded-full uppercase">Popular</div>}
       </div>
       <div className="p-3.5">
         <div className="font-semibold text-sm mb-1">{s.name}</div>
