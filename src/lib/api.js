@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import imageCompression from 'browser-image-compression';
+import { todayISO, nowTime } from './dates';
 
 // Extrae el path interno (después de "/services/") de una URL pública del bucket.
 const pathFromUrl = (url) => {
@@ -424,22 +425,35 @@ export const api_transactions = {
     return q.order('time', { ascending: false });
   },
   create: async (data) => {
-    let res = await supabase.from('transactions').insert(data).select().single();
-    // Compat: si la BD aún no tiene la columna service_ids (migración
-    // pendiente), reintenta sin ella para no romper el registro del pago.
-    // Nota: se dispara aunque service_ids sea null — enviar la clave de una
-    // columna inexistente también falla, así que basta con que esté presente.
-    if (res.error && 'service_ids' in data && /service_ids/.test(res.error.message || '')) {
-      const { service_ids, ...rest } = data;
-      res = await supabase.from('transactions').insert(rest).select().single();
+    // date/time explícitos en hora LOCAL del salón: el default de la BD es
+    // UTC, y en Cuba eso mandaba los cobros de la noche al día siguiente.
+    const payload = { date: todayISO(), time: nowTime(), ...data };
+    let res = await supabase.from('transactions').insert(payload).select().single();
+    // Compat: si la BD aún no tiene alguna columna nueva (service_ids,
+    // fx_rate…), la quitamos y reintentamos para no romper el registro.
+    let guard = 0;
+    let body = payload;
+    while (res.error && guard < 3) {
+      const col = (res.error.message || '').match(/'([a-z_]+)' column/i)?.[1];
+      if (!col || !(col in body)) break;
+      const { [col]: _drop, ...rest } = body;
+      body = rest;
+      res = await supabase.from('transactions').insert(body).select().single();
+      guard++;
     }
     return res;
   },
   update: async (id, data) => {
-    let res = await supabase.from('transactions').update(data).eq('id', id).select().single();
-    if (res.error && 'service_ids' in data && /service_ids/.test(res.error.message || '')) {
-      const { service_ids, ...rest } = data;
-      res = await supabase.from('transactions').update(rest).eq('id', id).select().single();
+    let body = data;
+    let res = await supabase.from('transactions').update(body).eq('id', id).select().single();
+    let guard = 0;
+    while (res.error && guard < 3) {
+      const col = (res.error.message || '').match(/'([a-z_]+)' column/i)?.[1];
+      if (!col || !(col in body)) break;
+      const { [col]: _drop, ...rest } = body;
+      body = rest;
+      res = await supabase.from('transactions').update(body).eq('id', id).select().single();
+      guard++;
     }
     return res;
   },
@@ -451,6 +465,38 @@ export const api_transactions = {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, callback)
       .subscribe();
   },
+};
+
+// ─── CLOSED DAYS (días que el salón no abre) ─────────────────────────
+export const api_closed_days = {
+  // Rango inclusivo. Se usa tanto en la Agenda como en la reserva pública.
+  list: ({ from, to } = {}) => {
+    let q = supabase.from('closed_days').select('*');
+    if (from) q = q.gte('date', from);
+    if (to)   q = q.lte('date', to);
+    return q.order('date');
+  },
+  // Idempotente: volver a cerrar el mismo día solo actualiza el motivo.
+  close: (date, reason = null) =>
+    supabase.from('closed_days').upsert({ date, reason }, { onConflict: 'date' }).select().single(),
+  open: (date) => supabase.from('closed_days').delete().eq('date', date),
+};
+
+// ─── FX RATES (historial de la tasa USD→CUP por día) ─────────────────
+export const api_fx_rates = {
+  list: ({ from, to } = {}) => {
+    let q = supabase.from('fx_rates').select('*');
+    if (from) q = q.gte('date', from);
+    if (to)   q = q.lte('date', to);
+    return q.order('date', { ascending: false });
+  },
+  forDate: (date) =>
+    supabase.from('fx_rates').select('*').eq('date', date).maybeSingle(),
+  set: (date, rate, source = 'manual') =>
+    supabase.from('fx_rates')
+      .upsert({ date, usd_to_cup: Number(rate) || 0, source, updated_at: new Date().toISOString() },
+        { onConflict: 'date' })
+      .select().single(),
 };
 
 // ─── STAFF ↔ SERVICES (qué servicios hace cada empleada) ────────────

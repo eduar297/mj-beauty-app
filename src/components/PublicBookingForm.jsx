@@ -3,9 +3,10 @@ import { Icon, Field, Input, Btn } from './ui.jsx';
 import ServicePicker from './ServicePicker.jsx';
 import { fmtDuration } from '../lib/duration';
 import {
-  api_appointments, api_clients, api_services, api_staff,
+  api_appointments, api_clients, api_services, api_staff, api_closed_days,
 } from '../lib/api';
 import { computeAllSlots } from '../lib/availability.js';
+import { todayISO } from '../lib/dates';
 
 // Clave para recordar a la clienta en este navegador. Mejora la UX en mobile:
 // al volver a reservar, el teléfono (y el nombre) ya están pre-llenados.
@@ -28,7 +29,8 @@ export const saveLocalIdentity = ({ phone, name }) => {
 // Es la "registración" implícita: la primera vez crea fila en clients,
 // la próxima reconoce a la clienta por teléfono.
 export default function PublicBookingForm({ onClose, defaultService, services: servicesProp }) {
-  const today = new Date().toISOString().slice(0, 10);
+  // Hora LOCAL, no UTC: con toISOString() en Cuba ya era "mañana" a las 8 PM.
+  const today = todayISO();
 
   // Estado del formulario — pre-llenado con la identidad guardada en este
   // navegador (si existe). Esto evita re-tipear el teléfono en cada visita.
@@ -44,6 +46,8 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
   // Datos cargados
   const [services, setServices] = useState(servicesProp || null);
   const [allStaff, setAllStaff] = useState([]); // staff activos (para las ventanas horarias)
+  // Días que el salón cerró — no se ofrecen horarios en ellos.
+  const [closedDays, setClosedDays] = useState([]); // [{date, reason}]
   const [existingClient, setExistingClient] = useState(null); // {id, name}
   const [phoneLookupBusy, setPhoneLookupBusy] = useState(false);
 
@@ -62,6 +66,7 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
       api_services.listPublic().then(({ data }) => setServices(data || []));
     }
     api_staff.list().then(({ data }) => setAllStaff(data || []));
+    api_closed_days.list({ from: today }).then(({ data }) => setClosedDays(data || []));
   }, [servicesProp]);
 
   // Si llega defaultService (reserva de un servicio puntual), lo pre-selecciona.
@@ -106,13 +111,21 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
     return () => clearTimeout(lookupTimer.current);
   }, [phone]);
 
+  // ¿El salón cerró el día elegido?
+  const closedInfo = useMemo(
+    () => closedDays.find(c => c.date === date) || null,
+    [closedDays, date]
+  );
+
   // Horarios del día: SIEMPRE se muestran todos (no se filtra por citas ni por
   // empleada). La clienta reserva y el salón confirma o reagenda después.
+  // Excepción: si el salón cerró ese día, no se ofrece ninguno.
   useEffect(() => {
     if (step !== 2 || !date) { setSlots([]); return; }
     setTime(''); // reset al cambiar de fecha
+    if (closedDays.some(c => c.date === date)) { setSlots([]); return; }
     setSlots(computeAllSlots({ date, staff: allStaff, stepMinutes: 30 }));
-  }, [step, date, allStaff.length]);
+  }, [step, date, allStaff.length, closedDays]);
 
   const submit = async () => {
     // Red de seguridad: nunca mandamos una cita sin los datos de la clienta,
@@ -121,6 +134,10 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
     if (digits.length < 8 || (name.trim().match(/\p{L}/gu) || []).length < 3 || selectedIds.length === 0) {
       setErr('Completa tu nombre, tu teléfono y al menos un servicio.');
       setStep(1);
+      return;
+    }
+    if (closedDays.some(c => c.date === date)) {
+      setErr('Ese día el salón no atiende. Elige otra fecha.');
       return;
     }
     setErr('');
@@ -270,7 +287,14 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
           </Field>
 
           <Field label="Elige una hora">
-            {slots.length === 0 ? (
+            {closedInfo ? (
+              <div className="text-xs bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-3">
+                <div className="text-red-400 font-semibold mb-1">Agenda llena — ese día no atendemos</div>
+                <div className="text-text-secondary">
+                  {closedInfo.reason || 'El salón está cerrado ese día.'} Por favor elige otra fecha.
+                </div>
+              </div>
+            ) : slots.length === 0 ? (
               <div className="text-xs text-text-muted bg-bg-elevated border border-border rounded-lg px-3 py-3">
                 No quedan horarios para ese día — prueba con otra fecha.
               </div>

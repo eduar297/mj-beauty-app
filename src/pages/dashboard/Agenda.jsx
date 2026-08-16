@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Header } from '../Dashboard.jsx';
 import { Icon, Btn, Modal, Field, Input, Select, ListLoading } from '../../components/ui.jsx';
-import { api_appointments, api_services, api_clients } from '../../lib/api';
+import { api_appointments, api_services, api_clients, api_closed_days } from '../../lib/api';
 import ServicePicker from '../../components/ServicePicker.jsx';
 import { fmtDuration } from '../../lib/duration';
 
@@ -54,6 +54,9 @@ export default function Agenda() {
   const [editing, setEditing] = useState(null);
   const [services, setServices] = useState([]);
   const [clients, setClients] = useState([]);
+  // Días que el salón NO abre (la clienta no puede reservar en ellos).
+  const [closedDays, setClosedDays] = useState([]); // [{date, reason}]
+  const [closingDay, setClosingDay] = useState(null); // fecha que se está cerrando
 
   const loadedRef = useRef({ from: '', to: '' });
 
@@ -73,11 +76,33 @@ export default function Agenda() {
     loadedRef.current = { from, to };
   };
 
+  // Días cerrados: solo de hoy en adelante (los pasados ya no importan).
+  const loadClosed = async () => {
+    const { data } = await api_closed_days.list({ from: toISO(new Date()) });
+    setClosedDays(data || []);
+  };
+
+  const closedSet = useMemo(() => new Set(closedDays.map(c => c.date)), [closedDays]);
+  const anchorISO = toISO(anchor);
+  const anchorClosed = closedDays.find(c => c.date === anchorISO) || null;
+
+  // Cerrar pide el motivo en un modal (window.prompt está bloqueado en
+  // varios navegadores móviles, justo donde más se usa esto). Reabrir es directo.
+  const toggleClosed = async () => {
+    if (anchorClosed) {
+      await api_closed_days.open(anchorISO);
+      loadClosed();
+    } else {
+      setClosingDay(anchorISO);
+    }
+  };
+
   useEffect(() => {
     const t = new Date();
     loadWindow(toISO(addDays(t, -90)), toISO(addDays(t, 180)));
     api_services.list().then(({ data }) => setServices(data || []));
     api_clients.list().then(({ data }) => setClients(data || []));
+    loadClosed();
     const ch = api_appointments.subscribe(() => {
       const { from, to } = loadedRef.current;
       if (from && to) loadWindow(from, to);
@@ -185,9 +210,45 @@ export default function Agenda() {
           className="px-3 py-2 rounded-lg border border-border-strong bg-bg-card text-xs font-semibold cursor-pointer disabled:opacity-40 hover:border-gold hover:text-gold transition-colors flex-shrink-0">
           Hoy
         </button>
+        <button onClick={toggleClosed}
+          title={anchorClosed ? 'Volver a abrir este día' : 'Marcar este día como cerrado'}
+          className={`px-3 py-2 rounded-lg border text-xs font-semibold cursor-pointer transition-colors flex-shrink-0 flex items-center gap-1.5 ${
+            anchorClosed
+              ? 'bg-red-500/15 text-red-400 border-red-500/40 hover:bg-red-500/25'
+              : 'bg-bg-card border-border-strong text-text-secondary hover:border-gold hover:text-gold'
+          }`}>
+          <Icon name={anchorClosed ? 'check' : 'close'} size={13} color="currentColor" />
+          <span className="hidden sm:inline">{anchorClosed ? 'Reabrir día' : 'Cerrar día'}</span>
+        </button>
         <div className="flex-1 min-w-0" />
         <ViewSwitcher view={view} onChange={setView} />
       </div>
+
+      {/* El día que se está viendo está cerrado al público. */}
+      {anchorClosed && (
+        <div className="mb-3 text-xs bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 flex items-center gap-2 flex-wrap">
+          <span className="text-red-400 font-semibold">Día cerrado</span>
+          <span className="text-text-secondary">
+            {anchorClosed.reason || 'No se atiende este día'} — las clientas no pueden reservar.
+          </span>
+        </div>
+      )}
+
+      {/* Próximos días cerrados, para no perderles la pista. */}
+      {closedDays.length > 0 && (
+        <div className="mb-3 flex items-center gap-2 flex-wrap">
+          <span className="text-[11px] text-text-muted uppercase tracking-wider font-semibold">Días cerrados:</span>
+          {closedDays.slice(0, 8).map(c => (
+            <button key={c.date} type="button"
+              onClick={() => { setAnchor(new Date(`${c.date}T00:00:00`)); setView('day'); }}
+              title={c.reason || 'Cerrado'}
+              className="text-[11px] px-2 py-1 rounded-full bg-red-500/10 text-red-400 border border-red-500/30 cursor-pointer hover:bg-red-500/20 whitespace-nowrap">
+              {new Date(`${c.date}T00:00:00`).toLocaleDateString('es-CU', { day: 'numeric', month: 'short' })}
+            </button>
+          ))}
+          {closedDays.length > 8 && <span className="text-[11px] text-text-muted">+{closedDays.length - 8}</span>}
+        </div>
+      )}
 
       {/* Aviso de citas pendientes por confirmar. */}
       {pendingCount > 0 && (
@@ -208,6 +269,15 @@ export default function Agenda() {
         <MonthView anchor={anchor} appointments={filtered} onPickDay={(d) => { setAnchor(d); setView('day'); }} />
       )}
 
+      {closingDay && (
+        <Modal open={true} onClose={() => setClosingDay(null)} title="Cerrar este día">
+          <CloseDayForm
+            date={closingDay}
+            onDone={() => { setClosingDay(null); loadClosed(); }}
+          />
+        </Modal>
+      )}
+
       {editing && (
         <Modal open={true} onClose={() => setEditing(null)} title={editing.id ? 'Editar cita' : 'Nueva Cita'}>
           <ApptForm
@@ -220,6 +290,67 @@ export default function Agenda() {
           />
         </Modal>
       )}
+    </div>
+  );
+}
+
+// Marca un día como cerrado. El motivo es opcional y lo ve la clienta
+// cuando intenta reservar ese día.
+function CloseDayForm({ date, onDone }) {
+  const PRESETS = ['No trabajamos ese día', 'Día feriado', 'Vacaciones', 'Agenda llena'];
+  const [reason, setReason] = useState(PRESETS[0]);
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState('');
+
+  const save = async () => {
+    setErr('');
+    setSaving(true);
+    try {
+      const res = await api_closed_days.close(date, reason.trim() || null);
+      if (res.error) throw res.error;
+      onDone();
+    } catch (e) {
+      setErr(e.message || 'No se pudo cerrar el día');
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div>
+      <p className="text-sm text-text-secondary mb-4">
+        El{' '}
+        <span className="text-gold font-semibold">
+          {new Date(`${date}T00:00:00`).toLocaleDateString('es-CU', { weekday: 'long', day: 'numeric', month: 'long' })}
+        </span>{' '}
+        no se atenderá. Las clientas no podrán reservar ese día.
+      </p>
+
+      <Field label="Motivo (lo verá la clienta)">
+        <Input value={reason} onChange={e => setReason(e.target.value)} placeholder="Ej: No trabajamos ese día" />
+      </Field>
+
+      <div className="flex gap-1.5 flex-wrap -mt-1 mb-4">
+        {PRESETS.map(p => (
+          <button key={p} type="button" onClick={() => setReason(p)}
+            className={`text-[11px] px-2.5 py-1 rounded-full border cursor-pointer transition ${
+              reason === p
+                ? 'bg-gold-dim border-gold/50 text-gold'
+                : 'bg-bg-elevated border-border text-text-muted hover:border-gold/50 hover:text-gold'
+            }`}>
+            {p}
+          </button>
+        ))}
+      </div>
+
+      {err && (
+        <div role="alert" className="text-red-400 text-sm bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 mb-3">
+          {err}
+        </div>
+      )}
+
+      <Btn icon="check" onClick={save} loading={saving}>
+        {saving ? 'Cerrando…' : 'Cerrar este día'}
+      </Btn>
     </div>
   );
 }

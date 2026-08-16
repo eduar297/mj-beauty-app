@@ -173,6 +173,47 @@ create table if not exists transactions (
 -- mostrar. amount es el total cobrado (editable, por si hay descuento).
 alter table transactions add column if not exists service_ids uuid[];
 
+-- Migration: la tasa USD→CUP que regía cuando se cobró. Se guarda con cada
+-- pago para que el historial muestre el cambio real de ese día y no el de hoy.
+alter table transactions add column if not exists fx_rate numeric(12,2);
+
+-- IMPORTANTE (zona horaria): current_date/current_time en Supabase son UTC.
+-- Cuba es UTC-4/-5, así que un cobro de la noche (8 PM en adelante) caía con
+-- la fecha del día SIGUIENTE y desaparecía de la caja del día. Los defaults
+-- ahora usan hora de Cuba; además la app manda date/time explícitos.
+alter table transactions alter column date set default ((now() at time zone 'America/Havana')::date);
+alter table transactions alter column time set default ((now() at time zone 'America/Havana')::time);
+
+-- ───── Tabla: closed_days (días que el salón NO abre) ───────────────
+-- La administradora marca desde la Agenda "este día no trabajo". La página
+-- pública lo lee para no ofrecer horarios ese día.
+create table if not exists closed_days (
+  date date primary key,
+  reason text,
+  created_at timestamptz default now()
+);
+alter table closed_days enable row level security;
+-- Lectura pública: la clienta necesita saber qué días están cerrados.
+drop policy if exists "closed_days_public_read" on closed_days;
+create policy "closed_days_public_read" on closed_days for select using (true);
+drop policy if exists "closed_days_anon_all" on closed_days;
+create policy "closed_days_anon_all" on closed_days for all using (true);
+
+-- ───── Tabla: fx_rates (historial de la tasa USD→CUP por día) ───────
+-- Una fila por día. La escribe el cron automático o la administradora a mano.
+-- Sirve para ver la caja de días pasados con el cambio que regía entonces.
+create table if not exists fx_rates (
+  date date primary key,
+  usd_to_cup numeric(12,2) not null,
+  source text default 'auto',           -- 'auto' | 'manual'
+  updated_at timestamptz default now()
+);
+alter table fx_rates enable row level security;
+drop policy if exists "fx_rates_public_read" on fx_rates;
+create policy "fx_rates_public_read" on fx_rates for select using (true);
+drop policy if exists "fx_rates_anon_all" on fx_rates;
+create policy "fx_rates_anon_all" on fx_rates for all using (true);
+
 -- ───── Tabla: staff_services (relación N-N entre empleadas y servicios) ─
 create table if not exists staff_services (
   staff_id   uuid not null references staff(id)    on delete cascade,
@@ -754,6 +795,13 @@ begin
     update site_settings
       set usd_to_cup = round(usd, 2), fx_updated_at = now(), fx_source = 'auto'
       where id = 1;
+    -- Historial: deja registrada la tasa de hoy para poder revisar la caja
+    -- de días pasados con el cambio que regía entonces.
+    insert into fx_rates (date, usd_to_cup, source, updated_at)
+    values ((now() at time zone 'America/Havana')::date, round(usd, 2), 'auto', now())
+    on conflict (date) do update
+      set usd_to_cup = excluded.usd_to_cup, source = 'auto', updated_at = now()
+      where fx_rates.source <> 'manual';   -- lo puesto a mano manda
   end if;
 exception when others then null;
 end $$;
