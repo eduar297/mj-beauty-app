@@ -3,10 +3,10 @@ import { Icon, Field, Input, Btn } from './ui.jsx';
 import ServicePicker from './ServicePicker.jsx';
 import { fmtDuration } from '../lib/duration';
 import {
-  api_appointments, api_clients, api_services, api_staff, api_closed_days,
+  api_appointments, api_clients, api_services, api_staff, api_closed_days, api_settings,
 } from '../lib/api';
 import { computeAllSlots } from '../lib/availability.js';
-import { todayISO } from '../lib/dates';
+import { todayISO, longDate } from '../lib/dates';
 
 // Clave para recordar a la clienta en este navegador. Mejora la UX en mobile:
 // al volver a reservar, el teléfono (y el nombre) ya están pre-llenados.
@@ -48,6 +48,8 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
   const [allStaff, setAllStaff] = useState([]); // staff activos (para las ventanas horarias)
   // Días que el salón cerró — no se ofrecen horarios en ellos.
   const [closedDays, setClosedDays] = useState([]); // [{date, reason}]
+  // Datos del salón para el cartel de confirmación (dirección, WhatsApp…).
+  const [site, setSite] = useState(null);
   const [existingClient, setExistingClient] = useState(null); // {id, name}
   const [phoneLookupBusy, setPhoneLookupBusy] = useState(false);
 
@@ -67,6 +69,7 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
     }
     api_staff.list().then(({ data }) => setAllStaff(data || []));
     api_closed_days.list({ from: today }).then(({ data }) => setClosedDays(data || []));
+    api_settings.get().then(({ data }) => setSite(data || {}));
   }, [servicesProp]);
 
   // Si llega defaultService (reserva de un servicio puntual), lo pre-selecciona.
@@ -171,25 +174,85 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
     }
   };
 
-  if (done) return (
-    <div className="text-center py-4">
-      <div className="w-16 h-16 rounded-full bg-gold-dim grid place-items-center mx-auto mb-4 border border-gold/40">
-        <Icon name="clock" size={28} color="var(--gold)" />
+  // Cartel de confirmación: cuándo y DÓNDE. La dirección aquí evita que
+  // la clienta tenga que volver a preguntarla por WhatsApp.
+  if (done) {
+    const addr = [site?.address, site?.city].filter(Boolean).join(', ');
+    const wa = site?.whatsapp;
+    const svcNames = selectedServices.map(s => s.name).join(' + ');
+    return (
+      <div className="py-1">
+        <div className="text-center mb-5">
+          <div className="w-16 h-16 rounded-full bg-gold-dim grid place-items-center mx-auto mb-3 border border-gold/40">
+            <Icon name="check" size={28} color="var(--gold)" />
+          </div>
+          <h3 className="font-serif text-xl mb-1">¡Te esperamos, {name.trim().split(' ')[0]}!</h3>
+          <p className="text-text-secondary text-sm">
+            Tu cita quedó registrada. Te la confirmamos por WhatsApp en un momento.
+          </p>
+        </div>
+
+        <div className="bg-bg-elevated border border-border rounded-xl overflow-hidden text-left mb-3">
+          <div className="px-4 py-3 flex items-start gap-3">
+            <div className="w-8 h-8 rounded-lg bg-gold-dim grid place-items-center flex-shrink-0 mt-0.5">
+              <Icon name="calendar" size={15} color="var(--gold)" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-[10px] uppercase tracking-wider text-text-muted font-semibold mb-0.5">Cuándo</div>
+              <div className="font-semibold text-sm first-letter:uppercase">{longDate(date)}</div>
+              <div className="text-gold font-bold text-lg leading-tight">{time}</div>
+              {svcNames && (
+                <div className="text-xs text-text-muted mt-1">
+                  {svcNames} · {fmtDuration(totalDuration)} aprox.
+                </div>
+              )}
+            </div>
+          </div>
+
+          {addr && (
+            <div className="px-4 py-3 border-t border-border flex items-start gap-3">
+              <div className="w-8 h-8 rounded-lg bg-gold-dim grid place-items-center flex-shrink-0 mt-0.5">
+                <Icon name="map" size={15} color="var(--gold)" />
+              </div>
+              <div className="min-w-0">
+                <div className="text-[10px] uppercase tracking-wider text-text-muted font-semibold mb-0.5">Dónde</div>
+                <div className="font-semibold text-sm">{site?.business_name || 'Te esperamos en'}</div>
+                <div className="text-sm text-text-secondary leading-snug">{addr}</div>
+                {site?.google_maps_url && (
+                  <a href={site.google_maps_url} target="_blank" rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-gold hover:underline mt-1.5">
+                    Ver en el mapa →
+                  </a>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="text-xs text-text-secondary bg-gold/10 border border-gold/30 rounded-lg px-3 py-2 mb-3 flex items-start gap-2">
+          <Icon name="clock" size={13} color="var(--gold)" />
+          <span>Si necesitamos mover la hora, te avisamos por WhatsApp antes.</span>
+        </div>
+
+        {isNew && (
+          <p className="text-xs text-gold text-center mb-3">
+            ✨ Quedaste registrada como clienta — tus próximas citas serán más rápidas.
+          </p>
+        )}
+
+        <div className="flex gap-2.5">
+          {wa && (
+            <a href={`https://wa.me/${wa}`} target="_blank" rel="noopener noreferrer"
+              className="flex-1 py-2.5 rounded-lg text-sm font-bold cursor-pointer transition flex items-center justify-center gap-1.5 text-white hover:brightness-110"
+              style={{ background: '#25D366' }}>
+              <Icon name="whatsapp" size={15} color="#fff" /> Escribirnos
+            </a>
+          )}
+          <Btn onClick={onClose}>Listo</Btn>
+        </div>
       </div>
-      <h3 className="font-serif text-xl mb-2">Esperando aprobación</h3>
-      <p className="text-text-secondary text-sm mb-2">
-        Tu cita está en revisión. Te notificaremos en breve por esta página o por WhatsApp cuando sea confirmada.
-      </p>
-      {isNew && (
-        <p className="text-xs text-gold mt-3">
-          ✨ Quedaste registrada como clienta — tus próximas citas serán más rápidas.
-        </p>
-      )}
-      <div className="mt-5">
-        <Btn onClick={onClose}>Cerrar</Btn>
-      </div>
-    </div>
-  );
+    );
+  }
 
   // Validación de los datos de la clienta. Antes entraban reservas sin nombre
   // real (aparecían como "Cliente" en la agenda) o con teléfonos incompletos,
