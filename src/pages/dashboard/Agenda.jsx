@@ -2,7 +2,8 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Header } from '../Dashboard.jsx';
 import { Icon, Btn, Modal, Field, Input, Select, ListLoading } from '../../components/ui.jsx';
-import { api_appointments, api_services, api_clients, api_closed_days } from '../../lib/api';
+import { api_appointments, api_services, api_clients, api_closed_days, api_settings } from '../../lib/api';
+import { closedInfoFor, DAY_NAMES_PLURAL_ES } from '../../lib/dates';
 import ServicePicker from '../../components/ServicePicker.jsx';
 import { fmtDuration } from '../../lib/duration';
 
@@ -57,6 +58,8 @@ export default function Agenda() {
   // Días que el salón NO abre (la clienta no puede reservar en ellos).
   const [closedDays, setClosedDays] = useState([]); // [{date, reason}]
   const [closingDay, setClosingDay] = useState(null); // fecha que se está cerrando
+  // Regla fija de la semana (p.ej. sáb y dom cerrados) desde Personalización.
+  const [closedWeekdays, setClosedWeekdays] = useState([0, 6]);
 
   const loadedRef = useRef({ from: '', to: '' });
 
@@ -84,7 +87,11 @@ export default function Agenda() {
 
   const closedSet = useMemo(() => new Set(closedDays.map(c => c.date)), [closedDays]);
   const anchorISO = toISO(anchor);
-  const anchorClosed = closedDays.find(c => c.date === anchorISO) || null;
+  const anchorClosedOne = closedDays.find(c => c.date === anchorISO) || null;
+  // Cerrado por regla de la semana (no se "reabre" desde aquí, se cambia en
+  // Personalización → Días que abrimos).
+  const anchorClosedByWeekday = !anchorClosedOne && closedWeekdays.includes(new Date(`${anchorISO}T00:00:00`).getDay());
+  const anchorClosed = anchorClosedOne;
 
   // Cerrar pide el motivo en un modal (window.prompt está bloqueado en
   // varios navegadores móviles, justo donde más se usa esto). Reabrir es directo.
@@ -103,6 +110,7 @@ export default function Agenda() {
     api_services.list().then(({ data }) => setServices(data || []));
     api_clients.list().then(({ data }) => setClients(data || []));
     loadClosed();
+    api_settings.get().then(({ data }) => setClosedWeekdays(data?.closed_weekdays ?? [0, 6]));
     const ch = api_appointments.subscribe(() => {
       const { from, to } = loadedRef.current;
       if (from && to) loadWindow(from, to);
@@ -223,6 +231,16 @@ export default function Agenda() {
         <div className="flex-1 min-w-0" />
         <ViewSwitcher view={view} onChange={setView} />
       </div>
+
+      {/* Cerrado por la regla fija de la semana. */}
+      {anchorClosedByWeekday && (
+        <div className="mb-3 text-xs bg-bg-elevated border border-border rounded-lg px-3 py-2 flex items-center gap-2 flex-wrap">
+          <span className="text-text-secondary font-semibold">Cerrado los {DAY_NAMES_PLURAL_ES[new Date(`${anchorISO}T00:00:00`).getDay()]}</span>
+          <span className="text-text-muted">
+            Las clientas no pueden reservar. Se cambia en Personalización → Días que abrimos.
+          </span>
+        </div>
+      )}
 
       {/* El día que se está viendo está cerrado al público. */}
       {anchorClosed && (

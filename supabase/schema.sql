@@ -146,6 +146,12 @@ insert into site_settings (id) values (1) on conflict do nothing;
 -- Personalización; la landing usa el fallback /assets/svc-*.jpeg si falta.
 alter table site_settings add column if not exists service_cat_photos jsonb default '{}'::jsonb;
 
+-- Migration: días de la semana en que el salón NO abre (0=domingo … 6=sábado).
+-- Por defecto los fines de semana están cerrados; se cambia desde
+-- Personalización → "Días de la semana". Es una regla fija que se suma a los
+-- días sueltos cerrados a mano en la Agenda (tabla closed_days).
+alter table site_settings add column if not exists closed_weekdays int[] default '{0,6}';
+
 -- Migration: tasa de cambio USD → CUP (pesos cubanos). La app muestra los
 -- precios en dólares y su equivalente en CUP usando esta tasa. Se edita a
 -- mano desde la Caja, o se actualiza sola con El Toque (ver bloque al final).

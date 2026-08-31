@@ -36,3 +36,34 @@ export const shortDate = (iso) =>
   new Date(`${iso}T00:00:00`).toLocaleDateString('es-CU', {
     weekday: 'short', day: 'numeric', month: 'short',
   });
+
+// ── Días cerrados ─────────────────────────────────────────────────────
+// El salón cierra por dos motivos distintos:
+//  1. Regla fija de la semana (p.ej. sábados y domingos) → site_settings.closed_weekdays
+//  2. Días sueltos marcados a mano en la Agenda        → tabla closed_days
+// Esta función responde por ambos y devuelve el motivo a mostrar, o null.
+
+export const DAY_NAMES_ES = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+// Plural para frases tipo "los sábados no abrimos". Lunes–viernes ya son
+// invariables; solo domingo y sábado pluralizan.
+export const DAY_NAMES_PLURAL_ES = ['domingos', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábados'];
+
+// Día de la semana (0=domingo … 6=sábado) de un "YYYY-MM-DD", en hora local.
+export const weekdayOf = (iso) => new Date(`${iso}T00:00:00`).getDay();
+
+/**
+ * @param {string} iso              fecha "YYYY-MM-DD"
+ * @param {Array}  closedDays       filas de closed_days [{date, reason}]
+ * @param {Array}  closedWeekdays   [0,6] por defecto
+ * @returns {{reason: string} | null}
+ */
+export function closedInfoFor(iso, closedDays = [], closedWeekdays = []) {
+  if (!iso) return null;
+  // El día suelto manda: si la administradora escribió un motivo, ese se ve.
+  const one = closedDays.find(c => c.date === iso);
+  if (one) return { reason: one.reason || 'El salón está cerrado ese día.' };
+  if ((closedWeekdays || []).includes(weekdayOf(iso))) {
+    return { reason: `Los ${DAY_NAMES_PLURAL_ES[weekdayOf(iso)]} no abrimos.` };
+  }
+  return null;
+}

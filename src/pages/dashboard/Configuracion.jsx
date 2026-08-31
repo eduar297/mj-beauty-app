@@ -22,7 +22,16 @@ const EMPTY = {
   tiktok_url: '',
   google_maps_url: '',
   service_cat_photos: {},
+  closed_weekdays: [0, 6],   // domingo y sábado cerrados por defecto
 };
+
+// Días de la semana, en el orden en que se leen (lunes primero).
+// El número es el que usa JS: 0=domingo … 6=sábado.
+const WEEKDAYS = [
+  { n: 1, label: 'Lun' }, { n: 2, label: 'Mar' }, { n: 3, label: 'Mié' },
+  { n: 4, label: 'Jue' }, { n: 5, label: 'Vie' }, { n: 6, label: 'Sáb' },
+  { n: 0, label: 'Dom' },
+];
 
 // Categorías de servicio que se muestran en la landing (cat interno + label + fallback).
 const SERVICE_CATS = [
@@ -152,6 +161,41 @@ export default function Configuracion() {
             </Card>
 
             <Card icon="clock" title="Horario" subtitle="Días y horas de atención">
+              {/* Qué días se puede reservar. Los apagados quedan bloqueados
+                  en la página pública (típico: sábado y domingo cerrados). */}
+              <div className="mb-4">
+                <label className="block text-[11px] font-semibold text-text-muted uppercase tracking-wider mb-2">
+                  Días que abrimos
+                </label>
+                <div className="flex gap-1.5 flex-wrap">
+                  {WEEKDAYS.map(({ n, label }) => {
+                    const closed = (f.closed_weekdays || []).includes(n);
+                    return (
+                      <button key={n} type="button"
+                        aria-pressed={!closed}
+                        onClick={() => {
+                          const cur = f.closed_weekdays || [];
+                          setF({
+                            ...f,
+                            closed_weekdays: closed ? cur.filter(x => x !== n) : [...cur, n],
+                          });
+                        }}
+                        className={`w-12 py-2 rounded-lg border text-xs font-semibold cursor-pointer transition ${
+                          closed
+                            ? 'bg-bg-elevated border-border text-text-muted line-through'
+                            : 'bg-gold-dim border-gold/50 text-gold'
+                        }`}>
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="text-[11px] text-text-muted mt-2">
+                  Los días apagados no aparecen para reservar. Para cerrar un día suelto
+                  (feriado, vacaciones) usa "Cerrar día" en la Agenda.
+                </div>
+              </div>
+
               <Field label="Lunes a Viernes"><Input value={f.hours_weekday} onChange={set('hours_weekday')} placeholder="9:00 AM – 7:00 PM" /></Field>
               <Field label="Sábados"><Input value={f.hours_saturday} onChange={set('hours_saturday')} placeholder="9:00 AM – 5:00 PM" /></Field>
               <Field label="Domingos"><Input value={f.hours_sunday} onChange={set('hours_sunday')} placeholder="Cerrado" /></Field>

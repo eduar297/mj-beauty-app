@@ -6,7 +6,7 @@ import {
   api_appointments, api_clients, api_services, api_staff, api_closed_days, api_settings,
 } from '../lib/api';
 import { computeAllSlots } from '../lib/availability.js';
-import { todayISO, longDate } from '../lib/dates';
+import { todayISO, longDate, closedInfoFor } from '../lib/dates';
 
 // Clave para recordar a la clienta en este navegador. Mejora la UX en mobile:
 // al volver a reservar, el teléfono (y el nombre) ya están pre-llenados.
@@ -114,10 +114,13 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
     return () => clearTimeout(lookupTimer.current);
   }, [phone]);
 
-  // ¿El salón cerró el día elegido?
+  // Días de la semana que el salón nunca abre (por defecto sáb y dom).
+  const closedWeekdays = useMemo(() => site?.closed_weekdays ?? [0, 6], [site]);
+
+  // ¿El salón cierra el día elegido? (por regla fija o por día suelto)
   const closedInfo = useMemo(
-    () => closedDays.find(c => c.date === date) || null,
-    [closedDays, date]
+    () => closedInfoFor(date, closedDays, closedWeekdays),
+    [date, closedDays, closedWeekdays]
   );
 
   // Horarios del día: SIEMPRE se muestran todos (no se filtra por citas ni por
@@ -126,9 +129,9 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
   useEffect(() => {
     if (step !== 2 || !date) { setSlots([]); return; }
     setTime(''); // reset al cambiar de fecha
-    if (closedDays.some(c => c.date === date)) { setSlots([]); return; }
+    if (closedInfoFor(date, closedDays, closedWeekdays)) { setSlots([]); return; }
     setSlots(computeAllSlots({ date, staff: allStaff, stepMinutes: 30 }));
-  }, [step, date, allStaff.length, closedDays]);
+  }, [step, date, allStaff.length, closedDays, site]);
 
   const submit = async () => {
     // Red de seguridad: nunca mandamos una cita sin los datos de la clienta,
@@ -139,8 +142,9 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
       setStep(1);
       return;
     }
-    if (closedDays.some(c => c.date === date)) {
-      setErr('Ese día el salón no atiende. Elige otra fecha.');
+    const closedNow = closedInfoFor(date, closedDays, closedWeekdays);
+    if (closedNow) {
+      setErr(`${closedNow.reason} Elige otra fecha.`);
       return;
     }
     setErr('');
@@ -354,7 +358,7 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
               <div className="text-xs bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-3">
                 <div className="text-red-400 font-semibold mb-1">Agenda llena — ese día no atendemos</div>
                 <div className="text-text-secondary">
-                  {closedInfo.reason || 'El salón está cerrado ese día.'} Por favor elige otra fecha.
+                  {(closedInfo.reason || 'El salón está cerrado ese día').replace(/[.\s]*$/, '')}. Por favor elige otra fecha.
                 </div>
               </div>
             ) : slots.length === 0 ? (

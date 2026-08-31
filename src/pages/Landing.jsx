@@ -102,6 +102,9 @@ export default function Landing() {
             <div className="flex gap-3 justify-center flex-wrap mt-8">
               <button onClick={() => setBookingOpen(true)} className="bg-gold text-[#0d0c0a] px-7 py-3 rounded-lg font-bold shadow-lg shadow-gold/20 hover:-translate-y-0.5 motion-reduce:transform-none transition cursor-pointer">Reservar Ahora</button>
               <a href="#servicios" className="border border-border-strong px-7 py-3 rounded-lg font-medium hover:border-gold transition cursor-pointer">Ver Servicios</a>
+              <Link to="/productos" className="border border-border-strong px-7 py-3 rounded-lg font-medium hover:border-gold transition cursor-pointer inline-flex items-center gap-2">
+                <Icon name="bag" size={16} /> Tienda
+              </Link>
             </div>
           </div>
         </section>
