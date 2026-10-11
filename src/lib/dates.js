@@ -67,3 +67,24 @@ export function closedInfoFor(iso, closedDays = [], closedWeekdays = []) {
   }
   return null;
 }
+
+// ── Meses (para el panel de Finanzas) ─────────────────────────────────
+// Formato 'YYYY-MM', el mismo que usa <input type="month">.
+
+export const thisMonth = () => todayISO().slice(0, 7);
+
+export const addMonthsYM = (ym, n) => {
+  const [y, m] = ym.split('-').map(Number);
+  const d = new Date(y, m - 1 + n, 1);
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}`;
+};
+
+// Primer y último día del mes. El día 0 del mes siguiente es el último del
+// actual, así no hay que saberse cuáles tienen 30, 31 o 29.
+export const monthBounds = (ym) => {
+  const [y, m] = ym.split('-').map(Number);
+  return { from: `${ym}-01`, to: `${ym}-${pad(new Date(y, m, 0).getDate())}` };
+};
+
+export const monthLabel = (ym) =>
+  new Date(`${ym}-01T00:00:00`).toLocaleDateString('es-CU', { month: 'long', year: 'numeric' });

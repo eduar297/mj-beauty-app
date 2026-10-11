@@ -3,6 +3,8 @@ import { Header } from '../Dashboard.jsx';
 import { Icon, Btn, Field, Input, Textarea, ListLoading, Spinner } from '../../components/ui.jsx';
 import PhotoCropEditor, { ASPECT_LANDING_CARD } from '../../components/PhotoCropEditor.jsx';
 import { api_settings, api_services } from '../../lib/api';
+import { TIERS, SHARES, DEFAULT_TIERS, normalizeTiers, tierSum, tiersValid } from '../../lib/finance';
+import { usdAmount } from '../../lib/money';
 
 const EMPTY = {
   business_name: '',
@@ -23,6 +25,7 @@ const EMPTY = {
   google_maps_url: '',
   service_cat_photos: {},
   closed_weekdays: [0, 6],   // domingo y sábado cerrados por defecto
+  cost_tiers: DEFAULT_TIERS, // reparto materiales/trabajadora/dueña
 };
 
 // Días de la semana, en el orden en que se leen (lunes primero).
@@ -55,10 +58,28 @@ export default function Configuracion() {
   const fileRef = useRef();
 
   useEffect(() => {
-    api_settings.get().then(({ data }) => setF({ ...EMPTY, ...(data || {}) }));
+    api_settings.get().then(({ data }) => {
+      const row = data || {};
+      setF({ ...EMPTY, ...row, cost_tiers: normalizeTiers(row.cost_tiers) });
+    });
   }, []);
 
   const set = (k) => (e) => setF({ ...f, [k]: e.target.value });
+
+  // Se guarda el texto crudo del input (permite borrar el campo para
+  // reescribirlo); el guardado lo normaliza a número.
+  const setShare = (tierId, key) => (e) => {
+    const raw = e.target.value;
+    const v = raw === '' ? '' : Math.max(0, Math.min(100, Number(raw)));
+    setF(prev => ({
+      ...prev,
+      cost_tiers: {
+        ...prev.cost_tiers,
+        [tierId]: { ...prev.cost_tiers?.[tierId], [key]: v },
+      },
+    }));
+  };
+  const sharesOk = f ? tiersValid(f.cost_tiers) : true;
 
   const pickCatPhoto = (cat) => { setEditingCat(cat); fileRef.current?.click(); };
   const onCatFile = (e) => {
@@ -89,9 +110,14 @@ export default function Configuracion() {
     e?.preventDefault();
     if (!f) return;
     setErr('');
+    if (!tiersValid(f.cost_tiers)) {
+      setErr('Cada nivel de costo tiene que sumar exactamente 100%. Revisa "Reparto del dinero".');
+      return;
+    }
     setSaving(true);
     try {
-      const { id, created_at, updated_at, ...payload } = f;
+      const { id, created_at, updated_at, ...rest } = f;
+      const payload = { ...rest, cost_tiers: normalizeTiers(f.cost_tiers) };
       const res = await api_settings.update(payload);
       if (res.error) throw res.error;
       setSavedAt(Date.now());
@@ -207,6 +233,81 @@ export default function Configuracion() {
               <Field label="TikTok"><Input value={f.tiktok_url} onChange={set('tiktok_url')} placeholder="https://tiktok.com/@mjbeauty" /></Field>
             </Card>
           </div>
+
+          {/* Reparto del dinero: de cada cobro, cuánto va a materiales, a la
+              trabajadora y a la dueña, según el nivel de costo del servicio.
+              Base de todo el panel de Finanzas. */}
+          <section className="bg-bg-card border border-border rounded-2xl p-5 mt-5">
+            <header className="flex items-center gap-2.5 mb-1 pb-3 border-b border-border">
+              <div className="w-9 h-9 rounded-lg grid place-items-center bg-gold-dim text-gold border border-border-strong">
+                <Icon name="cash" size={16} />
+              </div>
+              <div className="min-w-0">
+                <h2 className="font-serif text-base font-semibold leading-tight">Reparto del dinero</h2>
+                <p className="text-[11px] text-text-muted mt-0.5">Cómo se divide cada cobro según el nivel de costo del servicio</p>
+              </div>
+            </header>
+
+            <div className="grid gap-3 pt-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))' }}>
+              {TIERS.map(t => {
+                const row = f.cost_tiers?.[t.id] || {};
+                const sum = tierSum(row);
+                const ok = sum === 100;
+                return (
+                  <div key={t.id} className="rounded-xl border bg-bg-elevated p-3.5"
+                    style={{ borderColor: ok ? 'var(--border)' : 'rgb(239 68 68 / 0.6)' }}>
+                    <div className="flex items-center justify-between gap-2 mb-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: t.color }} />
+                        <span className="text-sm font-semibold truncate">{t.label}</span>
+                      </div>
+                      <span aria-live="polite"
+                        className={`text-[11px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
+                          ok ? 'text-green-400 bg-green-500/10' : 'text-red-400 bg-red-500/10'
+                        }`}>
+                        {sum}%
+                      </span>
+                    </div>
+
+                    {SHARES.map(sh => (
+                      <div key={sh.key} className="flex items-center gap-2 mb-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs text-text-secondary">{sh.label}</div>
+                          <div className="text-[10px] text-text-muted">{sh.hint}</div>
+                        </div>
+                        <div className="relative w-[72px] flex-shrink-0">
+                          <input type="number" min="0" max="100" inputMode="numeric"
+                            aria-label={`${sh.label} en ${t.label}`}
+                            value={row[sh.key] ?? ''}
+                            onChange={setShare(t.id, sh.key)}
+                            className="w-full bg-bg-card border border-border rounded-lg pl-2.5 pr-6 py-1.5 text-sm text-right outline-none focus:border-gold" />
+                          <span aria-hidden className="absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-text-muted pointer-events-none">%</span>
+                        </div>
+                      </div>
+                    ))}
+
+                    <div className="text-[10px] text-text-muted mt-2.5 pt-2 border-t border-border">
+                      Un cobro de 5 USD deja{' '}
+                      <strong className="text-text-secondary">{usdAmount(5 * (Number(row.materiales) || 0) / 100)}</strong> materiales ·{' '}
+                      <strong className="text-text-secondary">{usdAmount(5 * (Number(row.trabajadora) || 0) / 100)}</strong> trabajadora ·{' '}
+                      <strong className="text-text-secondary">{usdAmount(5 * (Number(row.duena) || 0) / 100)}</strong> dueña
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {!sharesOk && (
+              <p role="alert" className="text-[11px] text-red-400 mt-3">
+                Cada nivel tiene que sumar exactamente 100%. Si suma 105, el panel de
+                Finanzas reparte más dinero del que entró y todas las cifras quedan infladas.
+              </p>
+            )}
+            <p className="text-[11px] text-text-muted mt-3">
+              El nivel de cada servicio se elige en <strong className="text-text-secondary">Servicios</strong>.
+              Cambiar estos porcentajes recalcula también los meses anteriores.
+            </p>
+          </section>
 
           <section className="bg-bg-card border border-border rounded-2xl p-5 mt-5">
             <header className="flex items-center gap-2.5 mb-1 pb-3 border-b border-border">

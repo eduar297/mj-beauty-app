@@ -1,11 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Header } from '../Dashboard.jsx';
 import { Icon, Btn, Modal, Field, Input, Select, ListLoading } from '../../components/ui.jsx';
 import ServicePicker from '../../components/ServicePicker.jsx';
 import { api_transactions, api_services, api_staff, api_settings, api_fx_rates } from '../../lib/api';
 import { fmtMoney, fmtCup } from '../../lib/money';
+import { summarize, splitTransaction, indexServices } from '../../lib/finance';
 import { todayISO, addDaysISO, longDate } from '../../lib/dates';
 import { useFx } from '../../hooks/useFx.jsx';
+
+// Las tres partes en que se divide cada cobro.
+const SPLIT_CARDS = [
+  { k: 'materiales',  label: 'Materiales',   color: '#64a0d0' },
+  { k: 'trabajadora', label: 'Trabajadoras', color: '#6db86d' },
+  { k: 'duena',       label: 'Dueña',        color: 'var(--gold)' },
+];
 
 export default function Caja() {
   const today = todayISO();
@@ -46,6 +54,9 @@ export default function Caja() {
 
   const txList = tx || [];
   const total = txList.reduce((a, t) => a + Number(t.amount || 0), 0);
+  // Reparto del día: cuánto de lo cobrado va a materiales, a las trabajadoras
+  // y a la dueña, según el nivel de costo de cada servicio.
+  const fin = useMemo(() => summarize(txList, services, fx.tiers), [txList, services, fx.tiers]);
   const byMethod = (m) => txList.filter(t => t.method === m).reduce((a, t) => a + Number(t.amount || 0), 0);
   const methodIcon = { efectivo: 'cash', tarjeta: 'card', transferencia: 'transfer' };
   const methodColor = { efectivo: '#6db86d', tarjeta: 'var(--gold)', transferencia: '#64a0d0' };
@@ -87,6 +98,35 @@ export default function Caja() {
         <StatCard label="Tarjeta" value={fmt(byMethod('tarjeta'))} sub={cup(byMethod('tarjeta'))} icon="card" accent="var(--gold)" loading={tx === null} />
         <StatCard label="Transferencia" value={fmt(byMethod('transferencia'))} sub={cup(byMethod('transferencia'))} icon="transfer" accent="#64a0d0" loading={tx === null} />
       </div>
+
+      <section className="bg-bg-card border border-border rounded-2xl p-4 mb-5">
+        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Icon name="cash" size={15} color="var(--gold)" />
+            <h2 className="font-serif text-sm font-semibold">Reparto del día</h2>
+          </div>
+          <span className="text-[11px] text-text-muted">de {fmt(fin.total)} cobrados</span>
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          {SPLIT_CARDS.map(c => (
+            <div key={c.k} className="rounded-xl border border-border bg-bg-elevated p-3 min-w-0">
+              <div className="text-[10px] uppercase tracking-wider font-semibold truncate" style={{ color: c.color }}>{c.label}</div>
+              <div className="font-bold leading-tight mt-0.5" style={{ fontSize: 'clamp(15px,2.6vw,20px)' }}>
+                {tx === null
+                  ? <span className="inline-block w-14 h-4 bg-bg-hover rounded animate-pulse motion-reduce:animate-none" />
+                  : fmt(fin[c.k])}
+              </div>
+              {tx !== null && cup(fin[c.k]) && <div className="text-[10px] text-text-muted truncate">{cup(fin[c.k])}</div>}
+            </div>
+          ))}
+        </div>
+        {fin.unclassified > 0 && (
+          <p className="text-[11px] text-amber-400 mt-2.5">
+            {fmt(fin.unclassified)} viene de servicios sin nivel de costo asignado; se calcularon
+            como "costo medio". Ponles nivel en Servicios para que la cifra sea exacta.
+          </p>
+        )}
+      </section>
 
       <div className="bg-bg-card border border-border rounded-2xl overflow-hidden">
         <div className="px-4 py-3 border-b border-border flex justify-between text-sm">
@@ -253,6 +293,8 @@ function PayForm({ services, staff, date, dayRate, initial, onSaved, onDeleted }
   const [deleting, setDeleting] = useState(false);
   const [err, setErr] = useState('');
 
+  const { tiers } = useFx();
+
   const selectedServices = services.filter(s => selectedIds.includes(s.id));
   const suggestedTotal = selectedServices.reduce((a, s) => a + Number(s.price || 0), 0);
 
@@ -265,6 +307,14 @@ function PayForm({ services, staff, date, dayRate, initial, onSaved, onDeleted }
   };
 
   const amountNum = Number(amount) || 0;
+
+  // Vista previa del reparto: se actualiza mientras elige servicios y escribe
+  // el monto, para que vea en el momento cuánto le queda a cada quien.
+  const split = useMemo(
+    () => splitTransaction(
+      { amount: amountNum, service_ids: selectedIds.length ? selectedIds : null, service_name: serviceName },
+      indexServices(services), tiers),
+    [amountNum, selectedIds, serviceName, services, tiers]);
 
   const submit = async () => {
     setErr('');
@@ -347,6 +397,30 @@ function PayForm({ services, staff, date, dayRate, initial, onSaved, onDeleted }
       </div>
       {fmtCup(amountNum, dayRate) && (
         <div className="-mt-2 mb-3 text-xs text-text-muted">≈ {fmtCup(amountNum, dayRate)} al cambio de ese día</div>
+      )}
+
+      {amountNum > 0 && (
+        <div className="mb-4 rounded-xl border border-border bg-bg-elevated px-3 py-2.5">
+          <div className="text-[10px] uppercase tracking-wider font-semibold text-text-muted mb-2">Cómo se reparte</div>
+          <div className="grid grid-cols-3 gap-2">
+            {SPLIT_CARDS.map(c => (
+              <div key={c.k} className="min-w-0">
+                <div className="text-[10px] font-semibold truncate" style={{ color: c.color }}>{c.label}</div>
+                <div className="text-sm font-bold">{fmtMoney(split[c.k])}</div>
+                {fmtCup(split[c.k], dayRate) && (
+                  <div className="text-[10px] text-text-muted truncate">{fmtCup(split[c.k], dayRate)}</div>
+                )}
+              </div>
+            ))}
+          </div>
+          {split.unclassified > 0 && (
+            <div className="text-[10px] text-amber-400 mt-2">
+              {selectedIds.length || serviceName
+                ? 'Este servicio aún no tiene nivel de costo: se está usando "costo medio".'
+                : 'Elige el servicio para repartirlo con su nivel real; por ahora va como "costo medio".'}
+            </div>
+          )}
+        </div>
       )}
 
       {err && (

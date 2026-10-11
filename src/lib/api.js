@@ -103,6 +103,26 @@ export const api_clients = {
 };
 
 // ─── SERVICES ────────────────────────────────────────────────────────
+// Compat hacia adelante: la app se despliega en Vercel antes de que el SQL
+// nuevo esté corrido en Supabase. Si PostgREST se queja de una columna que
+// todavía no existe, la quitamos del payload y reintentamos, para que el
+// guardado no se rompa por una migración pendiente. Nota: basta con MANDAR la
+// clave de una columna inexistente para que falle, aunque su valor sea null.
+const stripUnknownCols = async (body, run) => {
+  let payload = body;
+  let res = await run(payload);
+  let guard = 0;
+  while (res.error && guard < 5) {
+    const col = (res.error.message || '').match(/'([a-z_]+)' column/i)?.[1];
+    if (!col || !(col in payload)) break;
+    const { [col]: _drop, ...rest } = payload;
+    payload = rest;
+    res = await run(payload);
+    guard++;
+  }
+  return res;
+};
+
 export const api_services = {
   // Orden: por categoría → orden manual (sort_order) → nombre (estable cuando
   // varios servicios tienen el mismo sort_order, p.ej. recién creados).
@@ -112,8 +132,10 @@ export const api_services = {
   listPublic: () =>
     supabase.from('services').select('*').eq('active', true)
       .order('cat').order('sort_order').order('name'),
-  create: (data) => supabase.from('services').insert(data).select().single(),
-  update: (id, data) => supabase.from('services').update(data).eq('id', id).select().single(),
+  create: (data) =>
+    stripUnknownCols(data, (d) => supabase.from('services').insert(d).select().single()),
+  update: (id, data) =>
+    stripUnknownCols(data, (d) => supabase.from('services').update(d).eq('id', id).select().single()),
   remove: (id) => supabase.from('services').update({ active: false }).eq('id', id),
   // Reordena un set de servicios. Recibe los IDs en el orden deseado; asigna
   // sort_order = i a cada uno. Solo se hace para los IDs pasados (típico:
@@ -424,6 +446,11 @@ export const api_transactions = {
     if (date) q = q.eq('date', date);
     return q.order('time', { ascending: false });
   },
+  // Todos los cobros entre dos fechas (inclusive), para el panel mensual.
+  listRange: (from, to) =>
+    supabase.from('transactions').select('*')
+      .gte('date', from).lte('date', to)
+      .order('date', { ascending: false }).order('time', { ascending: false }),
   create: async (data) => {
     // date/time explícitos en hora LOCAL del salón: el default de la BD es
     // UTC, y en Cuba eso mandaba los cobros de la noche al día siguiente.

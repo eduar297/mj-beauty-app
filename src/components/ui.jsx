@@ -45,6 +45,7 @@ export function Icon({ name, size = 18, color = 'currentColor' }) {
     whatsapp: "M3 21l1.65-3.8a9 9 0 113.4 2.9zM9 10a.5.5 0 011 0v1a.5.5 0 01-1 0zM14 10a.5.5 0 011 0v1a.5.5 0 01-1 0zM9 14c1 1 2 1.5 3 1.5s2-.5 3-1.5",
     bag: "M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0",
     info: "M12 22a10 10 0 100-20 10 10 0 000 20zM12 8h.01M11 12h1v4h1",
+    chart: "M3 3v18h18M7 15v3M12 10v8M17 6v12",
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

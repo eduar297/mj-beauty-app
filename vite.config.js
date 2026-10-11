@@ -1,10 +1,43 @@
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
+import { askJev } from './api/_jev-core.js';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
-export default defineConfig({
+
+// En producción /api/jev lo sirve Vercel (api/jev.js). En desarrollo no hay
+// serverless, así que se monta el MISMO núcleo como middleware para que las
+// dos se comporten igual. La clave se lee aquí, en Node: nunca llega al
+// bundle del navegador.
+function jevDevApi(key) {
+  return {
+    name: 'jev-dev-api',
+    configureServer(server) {
+      server.middlewares.use('/api/jev', async (req, res) => {
+        if (req.method !== 'POST') {
+          res.statusCode = 405;
+          res.end(JSON.stringify({ error: 'Usa POST.' }));
+          return;
+        }
+        let raw = '';
+        for await (const chunk of req) raw += chunk;
+        let parsed = {};
+        try { parsed = JSON.parse(raw || '{}'); } catch {}
+        const out = await askJev({ kind: parsed.kind, data: parsed.data, key });
+        res.statusCode = out.status;
+        res.setHeader('Content-Type', 'application/json');
+        res.end(JSON.stringify(out.body));
+      });
+    },
+  };
+}
+
+export default defineConfig(({ mode }) => {
+  // '' como prefijo = también las variables sin VITE_ (solo para uso en Node).
+  const env = loadEnv(mode, process.cwd(), '');
+  return {
   plugins: [
     react(),
+    jevDevApi(env.TYPESAFE_API_KEY),
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['assets/favicon.ico', 'assets/apple-touch-icon-180x180.png'],
@@ -35,4 +68,5 @@ export default defineConfig({
     }),
   ],
   server: { port: 5173 },
+  };
 });

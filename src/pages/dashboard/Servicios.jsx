@@ -5,6 +5,8 @@ import PhotoCropEditor, { ASPECT_LANDING_CARD } from '../../components/PhotoCrop
 import { api_services, api_service_photos } from '../../lib/api';
 import { fmtMoney } from '../../lib/money';
 import { fmtDuration } from '../../lib/duration';
+import { TIERS, tierInfo, DEFAULT_TIER } from '../../lib/finance';
+import { askJev, pct } from '../../lib/jev';
 import { DndContext, closestCenter } from '@dnd-kit/core';
 import { SortableContext, arrayMove, rectSortingStrategy } from '@dnd-kit/sortable';
 import {
@@ -73,7 +75,7 @@ export default function Servicios() {
               }`}>
               {reorderMode ? 'Listo' : 'Reordenar'}
             </button>
-            <Btn icon="plus" onClick={() => setEditing({ cat: activeCat, name:'', duration:60, price:0, popular:false, description:'' })}>Nuevo</Btn>
+            <Btn icon="plus" onClick={() => setEditing({ cat: activeCat, name:'', duration:60, price:0, popular:false, description:'', cost_tier: DEFAULT_TIER })}>Nuevo</Btn>
           </div>
         } />
 
@@ -118,6 +120,7 @@ export default function Servicios() {
         <Modal open={true} onClose={() => setEditing(null)} title={editing.id ? editing.name : 'Nuevo Servicio'}>
           <ServiceForm
             initial={editing}
+            all={list || []}
             onSaved={() => { setEditing(null); load(); }}
             onDelete={editing.id ? async () => { await api_services.remove(editing.id); setEditing(null); await load(); } : null}
           />
@@ -148,6 +151,13 @@ function SortableServiceCard({ service: s, fmt, reorderMode, index, total, onMov
       <div className="h-24 bg-bg-elevated relative">
         {s.photo_url && <img src={s.photo_url} alt="" loading="lazy" draggable={false} className="w-full h-full object-cover" />}
         {s.popular && !reorderMode && <div style={{ background: CAT_COLORS[s.cat] + 'cc' }} className="absolute top-2 left-2 text-[9px] font-bold text-[#0d0c0a] px-2 py-0.5 rounded-full uppercase">Popular</div>}
+        {s.cost_tier && !reorderMode && (
+          <div style={{ background: tierInfo(s.cost_tier).color + 'cc' }}
+            title={`Nivel de costo: ${tierInfo(s.cost_tier).label}`}
+            className="absolute top-2 right-2 text-[9px] font-bold text-[#0d0c0a] px-2 py-0.5 rounded-full uppercase">
+            {tierInfo(s.cost_tier).short}
+          </div>
+        )}
       </div>
       <div className="p-3.5">
         <div className="font-semibold text-sm mb-1">{s.name}</div>
@@ -161,13 +171,16 @@ function SortableServiceCard({ service: s, fmt, reorderMode, index, total, onMov
   );
 }
 
-function ServiceForm({ initial, onSaved, onDelete }) {
+function ServiceForm({ initial, all = [], onSaved, onDelete }) {
   const [f, setF] = useState({ ...initial });
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [err, setErr] = useState('');
   const [pendingFile, setPendingFile] = useState(null); // file elegido, esperando crop
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestion, setSuggestion] = useState(null);   // { tier, confidence }
+  const [suggestErr, setSuggestErr] = useState('');
   const fileRef = useRef();
 
   // El admin elige una foto → abre el crop editor. La subida real ocurre cuando
@@ -187,6 +200,29 @@ function ServiceForm({ initial, onSaved, onDelete }) {
       setF(prev => ({ ...prev, photo_url: url }));
     } catch (err) { alert('Error subiendo foto: ' + err.message); }
     setUploading(false);
+  };
+
+  // Jev clasifica comparando con los servicios de la MISMA categoría: un
+  // laminado se juzga contra otros de cejas, no contra una pedicura.
+  const suggest = async () => {
+    setSuggesting(true); setSuggestErr(''); setSuggestion(null);
+    try {
+      const others = all
+        .filter(x => x.id !== f.id && x.cat === f.cat)
+        .slice(0, 25)
+        .map(x => ({ name: x.name, duration: x.duration, price: x.price, cost_tier: x.cost_tier }));
+      const r = await askJev('classify', {
+        service: { name: f.name, duration: f.duration, price: f.price },
+        others,
+      });
+      const a = r.answers?.nivel_costo;
+      if (!a?.choice) throw new Error('Jev no devolvió una categoría.');
+      setSuggestion({ tier: a.choice, confidence: a.confidence ?? 0 });
+    } catch (e) {
+      setSuggestErr(e.message || 'No se pudo consultar a Jev');
+    } finally {
+      setSuggesting(false);
+    }
   };
 
   const submit = async () => {
@@ -234,6 +270,37 @@ function ServiceForm({ initial, onSaved, onDelete }) {
       <Field label="Categoría">
         <Select value={f.cat} onChange={e=>setF({...f, cat:e.target.value})} options={CATS.map(c => ({value:c, label:c}))} />
       </Field>
+      <Field label="Nivel de costo">
+        <Select value={f.cost_tier || DEFAULT_TIER}
+          onChange={e=>setF({...f, cost_tier:e.target.value})}
+          options={TIERS.map(t => ({ value: t.id, label: t.label }))} />
+      </Field>
+      <div className="text-[11px] text-text-muted -mt-2 mb-2">
+        Decide cuánto del cobro va a materiales, a la trabajadora y a ti.
+        Los porcentajes se editan en Personalización → Reparto del dinero.
+      </div>
+      <div className="mb-4">
+        {suggestion ? (
+          <div className="flex items-center gap-2 flex-wrap text-xs bg-gold-dim border border-gold/40 rounded-lg px-2.5 py-2">
+            <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: tierInfo(suggestion.tier).color }} />
+            <span className="text-text-secondary">
+              Jev sugiere <strong>{tierInfo(suggestion.tier).label}</strong> ({pct(suggestion.confidence)} de confianza)
+            </span>
+            {f.cost_tier !== suggestion.tier && (
+              <button type="button" onClick={() => setF({ ...f, cost_tier: suggestion.tier })}
+                className="text-gold underline underline-offset-2 cursor-pointer">aplicar</button>
+            )}
+            <button type="button" onClick={() => setSuggestion(null)}
+              className="text-text-muted underline underline-offset-2 cursor-pointer ml-auto">cerrar</button>
+          </div>
+        ) : (
+          <button type="button" onClick={suggest} disabled={suggesting || !f.name}
+            className="text-xs font-semibold text-gold border border-gold/40 rounded-lg px-2.5 py-1.5 cursor-pointer hover:bg-gold-dim disabled:opacity-50 disabled:cursor-not-allowed">
+            {suggesting ? 'Consultando a Jev…' : 'Sugerir nivel con Jev'}
+          </button>
+        )}
+        {suggestErr && <div role="alert" className="text-[11px] text-red-400 mt-1.5">{suggestErr}</div>}
+      </div>
       <Field label="Descripción">
         <textarea value={f.description||''} onChange={e=>setF({...f, description:e.target.value})} rows={3}
           className="w-full bg-bg-card border border-border rounded-lg px-3 py-2.5 text-sm outline-none focus:border-gold resize-y" />
