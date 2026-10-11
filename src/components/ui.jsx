@@ -46,6 +46,7 @@ export function Icon({ name, size = 18, color = 'currentColor' }) {
     bag: "M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0",
     info: "M12 22a10 10 0 100-20 10 10 0 000 20zM12 8h.01M11 12h1v4h1",
     chart: "M3 3v18h18M7 15v3M12 10v8M17 6v12",
+    box: "M21 8l-9-5-9 5m18 0v8l-9 5-9-5V8m18 0l-9 5-9-5",
   };
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">

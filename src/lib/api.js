@@ -407,6 +407,73 @@ export const api_appointments = {
 };
 
 // ─── SITE SETTINGS (personalización pública) ─────────────────────────
+// ── Inventario de insumos ─────────────────────────────────────────────
+
+export const api_supplies = {
+  list: () => supabase.from('supplies').select('*').eq('active', true).order('name'),
+  create: (data) => stripUnknownCols(data, (d) => supabase.from('supplies').insert(d).select().single()),
+  update: (id, data) => stripUnknownCols(data, (d) => supabase.from('supplies').update(d).eq('id', id).select().single()),
+  remove: (id) => supabase.from('supplies').update({ active: false }).eq('id', id),
+};
+
+export const api_purchases = {
+  list: ({ from, to } = {}) => {
+    let q = supabase.from('purchases').select('*');
+    if (from) q = q.gte('date', from);
+    if (to) q = q.lte('date', to);
+    return q.order('date', { ascending: false }).order('created_at', { ascending: false });
+  },
+  remove: (id) => supabase.from('purchases').delete().eq('id', id),
+
+  // Registrar una compra sube el stock y recalcula el costo promedio
+  // ponderado: lo que quedaba a su costo viejo, más lo que entra al nuevo.
+  // Sin esto, una compra cara pisaría el costo de todo lo que ya había.
+  create: async ({ supply, qty, totalCost, fxRate, date, note }) => {
+    const q = Number(qty) || 0;
+    const cost = Number(totalCost) || 0;
+    const prevStock = Number(supply.stock) || 0;
+    const prevCost = Number(supply.unit_cost) || 0;
+    const newStock = prevStock + q;
+    const newUnitCost = newStock > 0
+      ? (prevStock * prevCost + cost) / newStock
+      : (q > 0 ? cost / q : prevCost);
+
+    const res = await stripUnknownCols(
+      {
+        supply_id: supply.id,
+        supply_name: supply.name,
+        qty: q,
+        total_cost: cost,
+        fx_rate: Number(fxRate) > 0 ? Number(fxRate) : null,
+        date: date || todayISO(),
+        note: note || null,
+      },
+      (d) => supabase.from('purchases').insert(d).select().single());
+    if (res.error) return res;
+
+    const up = await supabase.from('supplies')
+      .update({ stock: newStock, unit_cost: Math.round(newUnitCost * 10000) / 10000 })
+      .eq('id', supply.id);
+    return up.error ? up : res;
+  },
+};
+
+export const api_service_supplies = {
+  byService: (serviceId) =>
+    supabase.from('service_supplies').select('*').eq('service_id', serviceId),
+  // Se reemplaza la receta entera: más simple y sin filas huérfanas que
+  // cuadrar cuando quita un insumo.
+  replace: async (serviceId, rows) => {
+    const del = await supabase.from('service_supplies').delete().eq('service_id', serviceId);
+    if (del.error) return del;
+    const clean = (rows || []).filter(r => r.supply_id && Number(r.qty) > 0);
+    if (!clean.length) return { data: [], error: null };
+    return supabase.from('service_supplies').insert(
+      clean.map(r => ({ service_id: serviceId, supply_id: r.supply_id, qty: Number(r.qty) })));
+  },
+  all: () => supabase.from('service_supplies').select('*'),
+};
+
 export const api_settings = {
   get: () => supabase.from('site_settings').select('*').eq('id', 1).maybeSingle(),
   update: async (data) => {

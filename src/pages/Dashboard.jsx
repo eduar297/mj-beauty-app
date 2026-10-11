@@ -10,6 +10,7 @@ import Productos from './dashboard/Productos.jsx';
 import Empleadas from './dashboard/Empleadas.jsx';
 import Caja from './dashboard/Caja.jsx';
 import Finanzas from './dashboard/Finanzas.jsx';
+import Inventario from './dashboard/Inventario.jsx';
 import Resenas from './dashboard/Resenas.jsx';
 import Configuracion from './dashboard/Configuracion.jsx';
 
@@ -20,6 +21,7 @@ const TABS = [
   { id: 'productos',     label: 'Productos',     icon: 'bag',      roles: ['admin'] },
   { id: 'empleadas',     label: 'Empleadas',     icon: 'staff',    roles: ['admin'] },
   { id: 'caja',          label: 'Caja',          icon: 'cash',     roles: ['admin'] },
+  { id: 'inventario',    label: 'Inventario',    icon: 'box',      roles: ['admin'] },
   { id: 'finanzas',      label: 'Finanzas',      icon: 'chart',    roles: ['admin'] },
   { id: 'resenas',       label: 'Reseñas',       icon: 'star',     roles: ['admin'] },
   { id: 'configuracion', label: 'Personalización', icon: 'settings', roles: ['admin'] },
@@ -217,6 +219,7 @@ export default function Dashboard() {
             <Route path="empleadas" element={<Empleadas />} />
             <Route path="caja" element={<Caja />} />
           <Route path="finanzas" element={<Finanzas />} />
+          <Route path="inventario" element={<Inventario />} />
             <Route path="resenas" element={<Resenas />} />
             <Route path="configuracion" element={<Configuracion />} />
           </Routes>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Header } from '../Dashboard.jsx';
 import { Icon, ListLoading } from '../../components/ui.jsx';
-import { api_transactions, api_services, api_staff } from '../../lib/api';
+import { api_transactions, api_services, api_staff, api_purchases, api_supplies, api_service_supplies } from '../../lib/api';
 import { fmtMoney } from '../../lib/money';
 import { summarize, perHour, tierInfo } from '../../lib/finance';
 import { thisMonth, addMonthsYM, monthBounds, monthLabel } from '../../lib/dates';
@@ -16,6 +16,9 @@ export default function Finanzas() {
   const [tx, setTx] = useState(null);          // null = cargando
   const [services, setServices] = useState([]);
   const [staff, setStaff] = useState([]);
+  const [purchases, setPurchases] = useState([]);
+  const [supplies, setSupplies] = useState([]);
+  const [recipes, setRecipes] = useState([]);
   const fx = useFx();
   const isNow = month === now;
 
@@ -30,12 +33,15 @@ export default function Finanzas() {
   useEffect(() => {
     api_services.list().then(({ data }) => setServices(data || []));
     api_staff.list().then(({ data }) => setStaff(data || []));
+    api_supplies.list().then(({ data }) => setSupplies(data || []));
+    api_service_supplies.all().then(({ data }) => setRecipes(data || []));
   }, []);
 
   useEffect(() => {
     setTx(null);
     const { from, to } = monthBounds(month);
     api_transactions.listRange(from, to).then(({ data }) => setTx(data || []));
+    api_purchases.list({ from, to }).then(({ data }) => setPurchases(data || []));
   }, [month]);
 
   const fin = useMemo(
@@ -61,6 +67,28 @@ export default function Finanzas() {
     [svc]);
 
   const pctMat = fin.total > 0 ? (fin.materiales / fin.total) * 100 : 0;
+
+  // Materiales de verdad: lo que gastó comprando, y lo que dicen las recetas
+  // que consumió. Comparado con lo que el porcentaje aparta, es lo que dice
+  // si el reparto le alcanza o se está quedando corta.
+  const mat = useMemo(() => {
+    const cost = new Map(supplies.map(s2 => [s2.id, Number(s2.unit_cost) || 0]));
+    const perService = new Map();
+    for (const r of recipes) {
+      perService.set(r.service_id,
+        (perService.get(r.service_id) || 0) + (Number(r.qty) || 0) * (cost.get(r.supply_id) || 0));
+    }
+    let consumido = 0, conReceta = 0, sinReceta = 0;
+    for (const e of fin.byService.values()) {
+      if (e.id && perService.has(e.id)) { consumido += perService.get(e.id) * e.count; conReceta += e.count; }
+      else sinReceta += e.count;
+    }
+    return {
+      comprado: purchases.reduce((a, p) => a + (Number(p.total_cost) || 0), 0),
+      consumido, conReceta, sinReceta,
+      hayRecetas: perService.size > 0,
+    };
+  }, [purchases, supplies, recipes, fin]);
   const best = topProfit[0];
   const worst = [...svc].sort((a, b) => a.duena - b.duena)[0];
   const loading = tx === null;
@@ -242,7 +270,45 @@ export default function Finanzas() {
         </>
       )}
 
-        <Panel icon="sparkle" title="Pregúntale a Jev" subtitle="Escríbelo como lo dirías; el número sale de tus cobros" className="mt-4">
+        {!loading && (fin.count > 0 || purchases.length > 0) && (
+          <Panel icon="box" title="Materiales: lo que apartas vs lo que gastas" className="mt-4"
+            subtitle="Si gastas más de lo que apartas, el reparto se te queda corto">
+            <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
+              <MiniStat label="Apartado" value={fmtMoney(fin.materiales)} sub={`${pctMat.toFixed(1)}% de las ventas`} color="#64a0d0" />
+              <MiniStat label="Comprado" value={fmtMoney(mat.comprado)} sub={`${purchases.length} compra(s) este mes`} color="#d4857a" />
+              {mat.hayRecetas && (
+                <MiniStat label="Consumido" value={fmtMoney(mat.consumido)} sub="según las recetas" color="#8a6f4a" />
+              )}
+            </div>
+
+            {mat.comprado > 0 && (
+              <p className={`text-[11px] mt-3 ${mat.comprado > fin.materiales ? 'text-red-400' : 'text-green-400'}`}>
+                {mat.comprado > fin.materiales
+                  ? `Compraste ${fmtMoney(mat.comprado - fin.materiales)} más de lo que apartaste. Sube el porcentaje de materiales o revisa los precios.`
+                  : `Te sobraron ${fmtMoney(fin.materiales - mat.comprado)} del fondo de materiales.`}
+              </p>
+            )}
+            {mat.comprado === 0 && (
+              <p className="text-[11px] text-text-muted mt-3">
+                No hay compras registradas en {monthLabel(month)}. Apúntalas en Inventario y aquí verás si el {pctMat.toFixed(0)}% te alcanza.
+              </p>
+            )}
+            {mat.hayRecetas && mat.sinReceta > 0 && (
+              <p className="text-[11px] text-amber-400 mt-1.5">
+                {mat.sinReceta} de {mat.conReceta + mat.sinReceta} servicios del mes no tienen materiales declarados,
+                así que "consumido" se queda corto. Se declaran en cada servicio.
+              </p>
+            )}
+            {!mat.hayRecetas && (
+              <p className="text-[11px] text-text-muted mt-1.5">
+                Si dices qué insumos usa cada servicio (en Servicios → Materiales que usa),
+                aquí sale también lo que consumiste de verdad.
+              </p>
+            )}
+          </Panel>
+      )}
+
+      <Panel icon="sparkle" title="Pregúntale a Jev" subtitle="Escríbelo como lo dirías; el número sale de tus cobros" className="mt-4">
           <form onSubmit={submitAsk} className="flex gap-2 flex-wrap">
             <input value={ask} onChange={e => setAsk(e.target.value)}
               placeholder="cuánto le toca a Yani este mes"
@@ -335,6 +401,16 @@ function Big({ label, usd, cup, color, icon, loading }) {
         </div>
         {!loading && cupFmt(cup) && <div className="text-[11px] text-text-muted mt-0.5 truncate">{cupFmt(cup)}</div>}
       </div>
+    </div>
+  );
+}
+
+function MiniStat({ label, value, sub, color }) {
+  return (
+    <div className="rounded-xl border border-border bg-bg-elevated p-3 min-w-0">
+      <div className="text-[10px] uppercase tracking-wider font-semibold truncate" style={{ color }}>{label}</div>
+      <div className="font-bold leading-tight mt-0.5" style={{ fontSize: 'clamp(15px,2.6vw,20px)' }}>{value}</div>
+      {sub && <div className="text-[10px] text-text-muted truncate mt-0.5">{sub}</div>}
     </div>
   );
 }

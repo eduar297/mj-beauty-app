@@ -2,11 +2,13 @@ import { useEffect, useState, useRef } from 'react';
 import { Header } from '../Dashboard.jsx';
 import { Icon, Btn, Modal, Field, Input, Select, ListLoading, Spinner, CAT_COLORS, CAT_ICONS, BeforeAfterPair, PhotoTile } from '../../components/ui.jsx';
 import PhotoCropEditor, { ASPECT_LANDING_CARD } from '../../components/PhotoCropEditor.jsx';
-import { api_services, api_service_photos } from '../../lib/api';
+import { api_services, api_service_photos, api_supplies, api_service_supplies } from '../../lib/api';
 import { fmtMoney } from '../../lib/money';
 import { fmtDuration } from '../../lib/duration';
 import { TIERS, tierInfo, DEFAULT_TIER } from '../../lib/finance';
 import { askJev, pct } from '../../lib/jev';
+import { useFx } from '../../hooks/useFx.jsx';
+import { qtyFmt, unitCostFmt } from './Inventario.jsx';
 import { DndContext, closestCenter } from '@dnd-kit/core';
 import { SortableContext, arrayMove, rectSortingStrategy } from '@dnd-kit/sortable';
 import {
@@ -181,6 +183,11 @@ function ServiceForm({ initial, all = [], onSaved, onDelete }) {
   const [suggesting, setSuggesting] = useState(false);
   const [suggestion, setSuggestion] = useState(null);   // { tier, confidence }
   const [suggestErr, setSuggestErr] = useState('');
+  // Receta: qué insumos consume el servicio y cuánto. Es lo que permite
+  // saber el costo REAL de materiales, no solo el porcentaje apartado.
+  const [supplies, setSupplies] = useState([]);
+  const [recipe, setRecipe] = useState([]);   // [{ supply_id, qty }]
+  const { tiers } = useFx();
   const fileRef = useRef();
 
   // El admin elige una foto → abre el crop editor. La subida real ocurre cuando
@@ -201,6 +208,19 @@ function ServiceForm({ initial, all = [], onSaved, onDelete }) {
     } catch (err) { alert('Error subiendo foto: ' + err.message); }
     setUploading(false);
   };
+
+  useEffect(() => {
+    api_supplies.list().then(({ data }) => setSupplies(data || []));
+    if (!initial?.id) { setRecipe([]); return; }
+    api_service_supplies.byService(initial.id).then(({ data }) =>
+      setRecipe((data || []).map(r => ({ supply_id: r.supply_id, qty: r.qty }))));
+  }, [initial?.id]);
+
+  const supplyById = new Map(supplies.map(s2 => [s2.id, s2]));
+  const materialCost = recipe.reduce(
+    (a, r) => a + (Number(r.qty) || 0) * (Number(supplyById.get(r.supply_id)?.unit_cost) || 0), 0);
+  const tierPct = Number(tiers?.[f.cost_tier || DEFAULT_TIER]?.materiales) || 0;
+  const setAside = (Number(f.price) || 0) * tierPct / 100;
 
   // Jev clasifica comparando con los servicios de la MISMA categoría: un
   // laminado se juzga contra otros de cejas, no contra una pedicura.
@@ -239,6 +259,13 @@ function ServiceForm({ initial, all = [], onSaved, onDelete }) {
       delete data.created_at;
       const res = f.id ? await api_services.update(f.id, data) : await api_services.create(data);
       if (res.error) throw res.error;
+      // La receta se guarda contra el id real: en un servicio nuevo, el que
+      // acaba de devolver el insert.
+      const id = f.id || res.data?.id;
+      if (id) {
+        const rec = await api_service_supplies.replace(id, recipe);
+        if (rec.error) throw rec.error;
+      }
       onSaved();
     } catch (e) {
       setErr(e.message || 'No se pudo guardar');
@@ -347,6 +374,70 @@ function ServiceForm({ initial, all = [], onSaved, onDelete }) {
         <Btn icon="check" onClick={submit} loading={saving} disabled={!f.name || uploading || deleting}>
           {saving ? (f.id ? 'Guardando…' : 'Creando…') : (f.id ? 'Guardar' : 'Crear')}
         </Btn>
+      </div>
+
+      <div className="mt-6 pt-5 border-t border-border">
+        <div className="mb-3">
+          <div className="text-[11px] font-semibold text-text-muted uppercase tracking-wider">Materiales que usa</div>
+          <div className="text-xs text-text-muted mt-0.5">Para saber lo que cuesta de verdad, no solo el porcentaje</div>
+        </div>
+
+        {supplies.length === 0 ? (
+          <div className="text-xs text-text-muted bg-bg-card border border-dashed border-border rounded-lg p-3">
+            Primero crea insumos en Inventario y aquí podrás decir cuánto usa este servicio.
+          </div>
+        ) : (
+          <>
+            {recipe.map((r, i) => {
+              const sup = supplyById.get(r.supply_id);
+              return (
+                <div key={i} className="flex gap-2 items-end mb-2">
+                  <div className="flex-1 min-w-0">
+                    <Select value={r.supply_id || ''}
+                      onChange={e => setRecipe(recipe.map((x, j) => j === i ? { ...x, supply_id: e.target.value } : x))}
+                      options={[{ value: '', label: 'Elige insumo…' },
+                        ...supplies.map(s2 => ({ value: s2.id, label: `${s2.name} (${unitCostFmt(s2.unit_cost)}/${s2.unit})` }))]} />
+                  </div>
+                  <div className="w-24 flex-shrink-0">
+                    <Input type="number" value={r.qty ?? ''}
+                      placeholder={sup?.unit || 'cant.'}
+                      onChange={e => setRecipe(recipe.map((x, j) => j === i ? { ...x, qty: e.target.value } : x))} />
+                  </div>
+                  <button type="button" aria-label="Quitar insumo"
+                    onClick={() => setRecipe(recipe.filter((_, j) => j !== i))}
+                    className="w-9 h-[42px] grid place-items-center rounded-lg border border-border text-text-muted hover:text-red-400 hover:border-red-400 cursor-pointer flex-shrink-0">
+                    <Icon name="close" size={13} />
+                  </button>
+                </div>
+              );
+            })}
+            <button type="button" onClick={() => setRecipe([...recipe, { supply_id: '', qty: '' }])}
+              className="text-xs font-semibold text-gold border border-gold/40 rounded-lg px-2.5 py-1.5 cursor-pointer hover:bg-gold-dim">
+              + Añadir insumo
+            </button>
+
+            {recipe.length > 0 && (
+              <div className="mt-3 rounded-xl border border-border bg-bg-elevated px-3 py-2.5 text-xs">
+                <div className="flex justify-between gap-2 py-0.5">
+                  <span className="text-text-secondary">Te cuesta en material</span>
+                  <strong>{fmtMoney(materialCost)}</strong>
+                </div>
+                <div className="flex justify-between gap-2 py-0.5">
+                  <span className="text-text-secondary">Apartas ({tierPct}% de {fmtMoney(f.price || 0)})</span>
+                  <strong>{fmtMoney(setAside)}</strong>
+                </div>
+                {materialCost > 0 && (
+                  <div className={`mt-1.5 pt-1.5 border-t border-border text-[11px] ${
+                    materialCost > setAside ? 'text-red-400' : 'text-green-400'}`}>
+                    {materialCost > setAside
+                      ? `Te quedas corta por ${fmtMoney(materialCost - setAside)}. Sube el precio o pásalo a un nivel de costo más alto.`
+                      : `Te sobran ${fmtMoney(setAside - materialCost)} del apartado para materiales.`}
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        )}
       </div>
 
       <div className="mt-6 pt-5 border-t border-border">
