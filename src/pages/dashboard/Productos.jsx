@@ -5,6 +5,7 @@ import PhotoCropEditor, { ASPECT_SQUARE } from '../../components/PhotoCropEditor
 import { LOW_STOCK } from '../../components/ProductCard.jsx';
 import { api_products } from '../../lib/api';
 import { fmtMoney } from '../../lib/money';
+import { DualPrice, CupHint } from '../../components/Price.jsx';
 import { DndContext, closestCenter } from '@dnd-kit/core';
 import { SortableContext, arrayMove, rectSortingStrategy } from '@dnd-kit/sortable';
 import {
@@ -169,7 +170,7 @@ function SortableProductCard({ product: p, fmt, reorderMode, index, total, onMov
       <div className="p-3.5">
         <div className="flex justify-between items-start gap-2 mb-1">
           <div className="font-semibold text-sm min-w-0">{p.name}</div>
-          <span className="font-serif font-bold flex-shrink-0" style={{ color }}>{fmt(p.price)}</span>
+          <DualPrice usd={p.price} color={color} />
         </div>
         <p className="text-[11px] text-text-muted line-clamp-2 mb-2.5">{p.description}</p>
         {!reorderMode && (
@@ -281,6 +282,7 @@ function ProductForm({ initial, onSaved, onDelete }) {
             onChange={e=>setF({...f, stock: e.target.value === '' ? '' : Math.max(0, Number(e.target.value))})} />
         </Field>
       </div>
+      <CupHint usd={f.price} label="El precio en pesos" />
       <label className="flex items-center gap-2.5 mb-5 cursor-pointer">
         <input type="checkbox" checked={!!f.featured} onChange={e=>setF({...f, featured:e.target.checked})} className="w-4 h-4 accent-gold" />
         <span className="text-sm text-text-secondary">Destacado (mostrar en la página principal)</span>

@@ -4,6 +4,7 @@ import { Icon, Btn, Modal, Field, Input, Select, ListLoading, Spinner, CAT_COLOR
 import PhotoCropEditor, { ASPECT_LANDING_CARD } from '../../components/PhotoCropEditor.jsx';
 import { api_services, api_service_photos, api_supplies, api_service_supplies } from '../../lib/api';
 import { fmtMoney } from '../../lib/money';
+import { DualPrice, CupHint } from '../../components/Price.jsx';
 import { fmtDuration } from '../../lib/duration';
 import { TIERS, tierInfo, DEFAULT_TIER } from '../../lib/finance';
 import { askJev, pct } from '../../lib/jev';
@@ -31,6 +32,55 @@ export default function Servicios() {
   useEffect(() => { load(); }, []);
 
   const filtered = (list || []).filter(s => s.cat === activeCat);
+
+  // Clasificación en lote: una sola llamada a Jev con una pregunta por
+  // servicio. Nada se aplica solo — primero se revisa.
+  const [batchBusy, setBatchBusy] = useState(false);
+  const [batch, setBatch] = useState(null);    // [{ service, tier, confidence, changed }]
+  const [batchErr, setBatchErr] = useState('');
+  const [picked, setPicked] = useState(new Set());
+  const [applying, setApplying] = useState(false);
+
+  const runBatch = async () => {
+    setBatchBusy(true); setBatchErr(''); setBatch(null);
+    try {
+      const items = list || [];
+      const rows = [];
+      // Jev acepta hasta 60 preguntas por request; con menos de eso (el caso
+      // normal) esto es exactamente una llamada.
+      for (let i = 0; i < items.length; i += 60) {
+        const chunk = items.slice(i, i + 60);
+        const r = await askJev('classify_batch', {
+          services: chunk.map(x => ({ name: x.name, duration: x.duration, price: x.price })),
+        });
+        chunk.forEach((x, j) => {
+          const a = r.answers?.[`s${j}`];
+          if (!a?.choice) return;
+          rows.push({
+            service: x, tier: a.choice, confidence: a.confidence ?? 0,
+            changed: (x.cost_tier || DEFAULT_TIER) !== a.choice,
+          });
+        });
+      }
+      if (!rows.length) throw new Error('Jev no devolvió clasificaciones.');
+      // Se marcan solas las que cambian y vienen con confianza decente; el
+      // resto queda para que ella decida.
+      setPicked(new Set(rows.filter(r => r.changed && r.confidence >= 0.5).map(r => r.service.id)));
+      setBatch(rows);
+    } catch (e) { setBatchErr(e.message || 'No se pudo consultar a Jev'); }
+    finally { setBatchBusy(false); }
+  };
+
+  const applyBatch = async () => {
+    setApplying(true);
+    try {
+      const rows = (batch || []).filter(r => picked.has(r.service.id));
+      await Promise.all(rows.map(r => api_services.update(r.service.id, { cost_tier: r.tier })));
+      setBatch(null); setPicked(new Set());
+      await load();
+    } catch (e) { setBatchErr(e.message || 'No se pudieron guardar los niveles'); }
+    finally { setApplying(false); }
+  };
 
   const sensors = useReorderSensors();
 
@@ -77,6 +127,11 @@ export default function Servicios() {
               }`}>
               {reorderMode ? 'Listo' : 'Reordenar'}
             </button>
+            <button onClick={runBatch} disabled={batchBusy || !(list || []).length}
+              title="Jev clasifica todos los servicios de una vez"
+              className="px-3 py-2 rounded-lg border border-gold/40 text-gold text-xs font-semibold cursor-pointer hover:bg-gold-dim transition disabled:opacity-50 disabled:cursor-not-allowed">
+              {batchBusy ? 'Consultando…' : 'Sugerir niveles'}
+            </button>
             <Btn icon="plus" onClick={() => setEditing({ cat: activeCat, name:'', duration:60, price:0, popular:false, description:'', cost_tier: DEFAULT_TIER })}>Nuevo</Btn>
           </div>
         } />
@@ -95,6 +150,12 @@ export default function Servicios() {
           );
         })}
       </div>
+
+      {batchErr && (
+        <div role="alert" className="mb-4 text-sm text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
+          {batchErr}
+        </div>
+      )}
 
       {reorderMode && <ReorderHint />}
 
@@ -117,6 +178,63 @@ export default function Servicios() {
           </SortableContext>
         </DndContext>
       )}
+
+      <Modal open={!!batch} onClose={() => setBatch(null)} title="Niveles que sugiere Jev">
+        {batch && (
+          <div>
+            <p className="text-xs text-text-muted mb-3">
+              Revisó {batch.length} servicios de una vez. Vienen marcados los que cambian
+              con buena confianza; desmarca lo que no te cuadre.
+            </p>
+
+            <div className="max-h-80 overflow-y-auto -mx-1 px-1">
+              {batch.map(r => {
+                const cur = tierInfo(r.service.cost_tier || DEFAULT_TIER);
+                const sug = tierInfo(r.tier);
+                const on = picked.has(r.service.id);
+                return (
+                  <label key={r.service.id}
+                    className={`flex items-center gap-2.5 py-2 border-b border-border last:border-0 cursor-pointer ${
+                      r.changed ? '' : 'opacity-60'}`}>
+                    <input type="checkbox" checked={on} className="w-4 h-4 accent-gold flex-shrink-0"
+                      onChange={() => setPicked(prev => {
+                        const next = new Set(prev);
+                        next.has(r.service.id) ? next.delete(r.service.id) : next.add(r.service.id);
+                        return next;
+                      })} />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm truncate">{r.service.name}</div>
+                      <div className="text-[11px] text-text-muted flex items-center gap-1.5">
+                        {r.changed ? (
+                          <>
+                            <span className="line-through">{cur.short}</span>
+                            <span>→</span>
+                            <span style={{ color: sug.color }} className="font-semibold">{sug.short}</span>
+                          </>
+                        ) : (
+                          <span>ya está en {sug.short}</span>
+                        )}
+                        <span>· {pct(r.confidence)}</span>
+                      </div>
+                    </div>
+                    <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: sug.color }} />
+                  </label>
+                );
+              })}
+            </div>
+
+            <div className="flex gap-2 items-center flex-wrap pt-3 mt-3 border-t border-border">
+              <Btn icon="check" onClick={applyBatch} loading={applying} disabled={!picked.size}>
+                {applying ? 'Guardando…' : `Aplicar ${picked.size}`}
+              </Btn>
+              <button type="button" onClick={() => setPicked(new Set(batch.map(r => r.service.id)))}
+                className="text-xs text-gold underline underline-offset-2 cursor-pointer">marcar todos</button>
+              <button type="button" onClick={() => setPicked(new Set())}
+                className="text-xs text-text-muted underline underline-offset-2 cursor-pointer">ninguno</button>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {editing && (
         <Modal open={true} onClose={() => setEditing(null)} title={editing.id ? editing.name : 'Nuevo Servicio'}>
@@ -166,7 +284,7 @@ function SortableServiceCard({ service: s, fmt, reorderMode, index, total, onMov
         <p className="text-[11px] text-text-muted line-clamp-2 mb-2.5">{s.description}</p>
         <div className="flex justify-between items-center">
           <span className="text-xs text-text-muted flex items-center gap-1"><Icon name="clock" size={12} /> {fmtDuration(s.duration)}</span>
-          <span className="font-serif font-bold" style={{ color: CAT_COLORS[s.cat] }}>{fmt(s.price)}</span>
+          <DualPrice usd={s.price} usdMax={s.price_max} color={CAT_COLORS[s.cat]} />
         </div>
       </div>
     </div>
@@ -355,6 +473,7 @@ function ServiceForm({ initial, all = [], onSaved, onDelete }) {
             placeholder="Deja vacío si es fijo" />
         </Field>
       </div>
+      <CupHint usd={f.price} label="El precio mín en pesos" />
       <div className="text-[11px] text-text-muted -mt-2 mb-3">
         Si llenas los campos "máx", se mostrará un rango (ej: "30–60 min", "$50 — $80"). La duración mín es la que se usa para reservar.
       </div>

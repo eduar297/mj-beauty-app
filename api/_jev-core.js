@@ -12,6 +12,7 @@
 const ENDPOINT = 'https://api.typesafe.ai/v1/systemone';
 const MODEL = 'jev-latest';
 const MAX_SERVICES = 60;   // el límite de Jev es 255 opciones por Choice
+const MAX_BATCH = 60;      // preguntas por request al clasificar en lote
 
 const TIER_CRITERIA = {
   bajo:  'Poco material, servicio rápido y sencillo',
@@ -101,6 +102,39 @@ export function buildRequest(kind, data = {}) {
           criteria: TIER_CRITERIA,
         },
       },
+    };
+  }
+
+
+  // Clasifica TODO el catálogo en UNA sola llamada: el mapa `questions`
+  // admite varias preguntas, así que va una Choice por servicio en vez de un
+  // request por cada uno. Las claves son s0, s1… y el cliente las vuelve a
+  // casar con sus ids.
+  if (kind === 'classify_batch') {
+    const items = (data.services || []).slice(0, MAX_BATCH);
+    if (!items.length) throw new Error('Sin servicios que clasificar');
+
+    const catalogo = items.map(x => ({
+      nombre: str(x.name),
+      duracion_min: Number(x.duration) || 0,
+      precio_usd: n2(x.price),
+    }));
+
+    const questions = {};
+    items.forEach((x, i) => {
+      questions[`s${i}`] = {
+        type: 'choice',
+        instructions: {
+          servicio: catalogo[i],
+          question: 'Clasifica `servicio` por cuánto material consume, comparándolo con el resto del `catalogo`.',
+        },
+        criteria: TIER_CRITERIA,
+      };
+    });
+
+    return {
+      state: { negocio: 'Salón de belleza en Cuba. Precios en USD.', catalogo },
+      questions,
     };
   }
 
