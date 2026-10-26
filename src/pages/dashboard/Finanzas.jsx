@@ -198,25 +198,55 @@ export default function Finanzas() {
             subtitle={`Su parte de los ${fmtMoney(fin.total)} del mes`}>
             <div className="divide-y divide-border">
               {byStaff.map(s => (
-                <div key={s.name} className="flex items-center gap-3 py-2.5">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold truncate flex items-center gap-1.5">
-                      {s.name}
-                      {owners.has(s.name) && (
-                        <span className="text-[9px] uppercase tracking-wider font-bold text-gold bg-gold-dim border border-gold/40 px-1.5 rounded-full">dueña</span>
-                      )}
+                <details key={s.name} className="py-2.5 group">
+                  <summary className="flex items-center gap-3 cursor-pointer list-none">
+                    <Icon name="chevronRight" size={13} color="var(--text-muted)" />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold truncate flex items-center gap-1.5">
+                        {s.name}
+                        {owners.has(s.name) && (
+                          <span className="text-[9px] uppercase tracking-wider font-bold text-gold bg-gold-dim border border-gold/40 px-1.5 rounded-full">dueña</span>
+                        )}
+                      </div>
+                      <div className="text-[11px] text-text-muted">{s.count} cobro{s.count === 1 ? '' : 's'} · {fmtMoney(s.total)} vendido · ver desglose</div>
                     </div>
-                    <div className="text-[11px] text-text-muted">{s.count} cobro{s.count === 1 ? '' : 's'} · {fmtMoney(s.total)} vendido</div>
+                    <div className="text-right flex-shrink-0">
+                      <div className="font-bold text-sm" style={{ color: '#6db86d' }}>{fmtMoney(s.trabajadora)}</div>
+                      {cupFmt(s.trabajadora * fx.rate) && <div className="text-[10px] text-text-muted">{cupFmt(s.trabajadora * fx.rate)}</div>}
+                    </div>
+                  </summary>
+
+                  <div className="mt-2 ml-6 rounded-lg border border-border bg-bg-elevated overflow-hidden">
+                    {[...s.byService.values()].sort((a, b) => b.trabajadora - a.trabajadora).map(d => {
+                      const t = tierInfo(d.tier);
+                      const p = Number(fx.tiers?.[d.tier || 'medio']?.trabajadora) || 0;
+                      return (
+                        <div key={d.name} className="flex items-center gap-2 px-3 py-2 border-b border-border last:border-0 text-[11px]">
+                          <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: t.color }} />
+                          <span className="flex-1 min-w-0 truncate">
+                            {d.name}{d.count > 1 && <span className="text-text-muted"> ×{d.count}</span>}
+                          </span>
+                          <span className="text-text-muted whitespace-nowrap">
+                            {fmtMoney(d.amount)} × {p}% ({t.short})
+                          </span>
+                          <strong className="w-14 text-right flex-shrink-0" style={{ color: '#6db86d' }}>{fmtMoney(d.trabajadora)}</strong>
+                        </div>
+                      );
+                    })}
+                    <div className="flex items-center gap-2 px-3 py-2 bg-bg-card text-[11px] font-semibold">
+                      <span className="flex-1">Total a pagarle</span>
+                      <strong style={{ color: '#6db86d' }}>{fmtMoney(s.trabajadora)}</strong>
+                    </div>
                   </div>
-                  <div className="text-right flex-shrink-0">
-                    <div className="font-bold text-sm" style={{ color: '#6db86d' }}>{fmtMoney(s.trabajadora)}</div>
-                    {cupFmt(s.trabajadora * fx.rate) && <div className="text-[10px] text-text-muted">{cupFmt(s.trabajadora * fx.rate)}</div>}
-                  </div>
-                </div>
+                </details>
               ))}
             </div>
+            <p className="text-[11px] text-text-muted mt-3 pt-3 border-t border-border">
+              Cuando un cobro lleva varios servicios, el monto se reparte entre ellos según
+              su precio de lista, y a cada parte se le aplica el % de su nivel de costo.
+            </p>
             {[...owners].some(o => fin.byStaff.has(o)) && (
-              <p className="text-[11px] text-text-muted mt-3 pt-3 border-t border-border">
+              <p className="text-[11px] text-text-muted mt-1.5">
                 Lo marcado como <strong className="text-gold">dueña</strong> es solo su parte de trabajadora.
                 La ganancia del salón ({fmtMoney(fin.duena)}) va aparte y también es tuya.
               </p>

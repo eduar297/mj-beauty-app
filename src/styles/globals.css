@@ -101,3 +101,8 @@ input, select, textarea { font-family: inherit; }
 
 html { scroll-behavior: smooth; }
 
+
+/* Desglose de pago por trabajadora: la flecha gira al abrir el <details>. */
+summary::-webkit-details-marker { display: none; }
+summary > svg { transition: transform .15s; }
+details[open] > summary > svg { transform: rotate(90deg); }

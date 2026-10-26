@@ -152,7 +152,7 @@ export function summarize(txs = [], services = [], tiers = DEFAULT_TIERS, fallba
     unclassified: 0,
     // Equivalente en pesos: cada cobro con SU tasa del día, no con la de hoy.
     cup: { total: 0, materiales: 0, trabajadora: 0, duena: 0 },
-    byStaff: new Map(),   // nombre → { total, trabajadora, count }
+    byStaff: new Map(),   // nombre → { total, trabajadora, count, byService }
     byService: new Map(), // clave  → { name, tier, total, duena, count, minutes }
     splits: new Map(),    // tx.id  → reparto, para el detalle de cada fila
   };
@@ -175,8 +175,15 @@ export function summarize(txs = [], services = [], tiers = DEFAULT_TIERS, fallba
     }
 
     const who = tx.staff_name || 'Sin asignar';
-    const st = out.byStaff.get(who) || { name: who, total: 0, trabajadora: 0, count: 0 };
+    const st = out.byStaff.get(who) || { name: who, total: 0, trabajadora: 0, count: 0, byService: new Map() };
     st.total += s.amount; st.trabajadora += s.trabajadora; st.count += 1;
+    // Desglose por servicio: es lo que explica de dónde sale el pago.
+    for (const l of s.lines) {
+      const d = st.byService.get(l.name) ||
+        { name: l.name, tier: l.tier, count: 0, amount: 0, trabajadora: 0 };
+      d.count += 1; d.amount += l.amount; d.trabajadora += l.trabajadora;
+      st.byService.set(l.name, d);
+    }
     out.byStaff.set(who, st);
 
     for (const l of s.lines) {
