@@ -217,26 +217,12 @@ export default function Finanzas() {
                   </summary>
 
                   <div className="mt-2 ml-6 rounded-lg border border-border bg-bg-elevated overflow-hidden">
-                    {[...s.byService.values()].sort((a, b) => b.trabajadora - a.trabajadora).map(d => {
-                      const t = tierInfo(d.tier);
-                      const p = Number(fx.tiers?.[d.tier || 'medio']?.trabajadora) || 0;
-                      return (
-                        <div key={d.name} className="flex flex-wrap items-center gap-x-2 px-3 py-2 border-b border-border last:border-0 text-[11px]">
-                          <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: t.color }} />
-                          <span className="min-w-0 basis-[calc(100%-1rem)] sm:basis-0 sm:flex-1">
-                            {d.name}{d.count > 1 && <span className="text-text-muted"> ×{d.count}</span>}
-                          </span>
-                          <span className="text-text-muted whitespace-nowrap ml-3.5 sm:ml-0">
-                            {fmtMoney(d.amount)} × {p}% ({t.short})
-                          </span>
-                          <strong className="ml-auto text-right flex-shrink-0" style={{ color: '#6db86d' }}>{fmtMoney(d.trabajadora)}</strong>
-                        </div>
-                      );
-                    })}
-                    <div className="flex items-center gap-2 px-3 py-2 bg-bg-card text-[11px] font-semibold">
-                      <span className="flex-1">Total a pagarle</span>
-                      <strong style={{ color: '#6db86d' }}>{fmtMoney(s.trabajadora)}</strong>
-                    </div>
+                    {[...s.byService.values()].sort((a, b) => b.trabajadora - a.trabajadora).map(d => (
+                      <SplitRow key={d.name} name={d.name} count={d.count} amount={d.amount}
+                        tier={d.tier} pctValue={Number(fx.tiers?.[d.tier || 'medio']?.trabajadora) || 0}
+                        value={d.trabajadora} color="#6db86d" />
+                    ))}
+                    <SplitTotal label="Total a pagarle" value={s.trabajadora} color="#6db86d" />
                   </div>
                 </details>
               ))}
@@ -300,7 +286,28 @@ export default function Finanzas() {
         </>
       )}
 
-        {!loading && (fin.count > 0 || purchases.length > 0) && (
+        {!loading && fin.count > 0 && (
+          <Panel icon="star" title="De dónde sale tu ganancia" className="mt-4"
+            subtitle={`Los ${fmtMoney(fin.duena)} del salón, servicio por servicio`}>
+            <details className="group">
+              <summary className="flex items-center gap-3 cursor-pointer list-none">
+                <Icon name="chevronRight" size={13} color="var(--text-muted)" />
+                <span className="flex-1 min-w-0 text-[11px] text-text-muted">ver desglose</span>
+                <strong className="text-sm" style={{ color: '#d4857a' }}>{fmtMoney(fin.duena)}</strong>
+              </summary>
+              <div className="mt-2 ml-6 rounded-lg border border-border bg-bg-elevated overflow-hidden">
+                {[...fin.byService.values()].sort((a, b) => b.duena - a.duena).map(d => (
+                  <SplitRow key={d.key} name={d.name} count={d.count} amount={d.total}
+                    tier={d.tier} pctValue={Number(fx.tiers?.[d.tier || 'medio']?.duena) || 0}
+                    value={d.duena} color="#d4857a" />
+                ))}
+                <SplitTotal label="Ganancia del salón" value={fin.duena} color="#d4857a" />
+              </div>
+            </details>
+          </Panel>
+      )}
+
+      {!loading && (fin.count > 0 || purchases.length > 0) && (
           <Panel icon="box" title="Materiales: lo que apartas vs lo que gastas" className="mt-4"
             subtitle="Si gastas más de lo que apartas, el reparto se te queda corto">
             <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
@@ -431,6 +438,34 @@ function Big({ label, usd, cup, color, icon, loading }) {
         </div>
         {!loading && cupFmt(cup) && <div className="text-[11px] text-text-muted mt-0.5 truncate">{cupFmt(cup)}</div>}
       </div>
+    </div>
+  );
+}
+
+// Una línea del desglose: qué servicio, cuánto se cobró por él, qué % le toca
+// según su nivel de costo, y cuánto deja. En móvil el nombre se queda sin
+// sitio, así que ocupa su propia línea.
+function SplitRow({ name, count, amount, tier, pctValue, value, color }) {
+  const t = tierInfo(tier);
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 px-3 py-2 border-b border-border last:border-0 text-[11px]">
+      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: t.color }} />
+      <span className="min-w-0 basis-[calc(100%-1rem)] sm:basis-0 sm:flex-1">
+        {name}{count > 1 && <span className="text-text-muted"> ×{count}</span>}
+      </span>
+      <span className="text-text-muted whitespace-nowrap ml-3.5 sm:ml-0">
+        {fmtMoney(amount)} × {pctValue}% ({t.short})
+      </span>
+      <strong className="ml-auto text-right flex-shrink-0" style={{ color }}>{fmtMoney(value)}</strong>
+    </div>
+  );
+}
+
+function SplitTotal({ label, value, color }) {
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 bg-bg-card text-[11px] font-semibold">
+      <span className="flex-1">{label}</span>
+      <strong style={{ color }}>{fmtMoney(value)}</strong>
     </div>
   );
 }
