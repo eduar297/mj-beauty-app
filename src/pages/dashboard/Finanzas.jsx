@@ -221,15 +221,15 @@ export default function Finanzas() {
                       const t = tierInfo(d.tier);
                       const p = Number(fx.tiers?.[d.tier || 'medio']?.trabajadora) || 0;
                       return (
-                        <div key={d.name} className="flex items-center gap-2 px-3 py-2 border-b border-border last:border-0 text-[11px]">
+                        <div key={d.name} className="flex flex-wrap items-center gap-x-2 px-3 py-2 border-b border-border last:border-0 text-[11px]">
                           <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: t.color }} />
-                          <span className="flex-1 min-w-0 truncate">
+                          <span className="min-w-0 basis-[calc(100%-1rem)] sm:basis-0 sm:flex-1">
                             {d.name}{d.count > 1 && <span className="text-text-muted"> ×{d.count}</span>}
                           </span>
-                          <span className="text-text-muted whitespace-nowrap">
+                          <span className="text-text-muted whitespace-nowrap ml-3.5 sm:ml-0">
                             {fmtMoney(d.amount)} × {p}% ({t.short})
                           </span>
-                          <strong className="w-14 text-right flex-shrink-0" style={{ color: '#6db86d' }}>{fmtMoney(d.trabajadora)}</strong>
+                          <strong className="ml-auto text-right flex-shrink-0" style={{ color: '#6db86d' }}>{fmtMoney(d.trabajadora)}</strong>
                         </div>
                       );
                     })}
