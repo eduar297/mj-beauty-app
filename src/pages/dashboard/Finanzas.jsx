@@ -6,6 +6,7 @@ import { fmtMoney } from '../../lib/money';
 import { summarize, perHour, tierInfo } from '../../lib/finance';
 import { thisMonth, addMonthsYM, monthBounds, monthLabel } from '../../lib/dates';
 import { useFx } from '../../hooks/useFx.jsx';
+import StaffPay, { SplitRow, SplitTotal } from '../../components/StaffPay.jsx';
 import { askJev, CONFIDENCE_MIN, pct } from '../../lib/jev';
 
 const cupFmt = (n) => (n > 0 ? `${new Intl.NumberFormat('es-CU', { maximumFractionDigits: 0 }).format(n)} CUP` : '');
@@ -53,10 +54,6 @@ export default function Finanzas() {
   const owners = useMemo(
     () => new Set(staff.filter(s => s.role === 'admin').map(s => s.name)),
     [staff]);
-
-  const byStaff = useMemo(
-    () => [...fin.byStaff.values()].sort((a, b) => b.trabajadora - a.trabajadora),
-    [fin]);
 
   const svc = useMemo(() => [...fin.byService.values()], [fin]);
   const topCount  = useMemo(() => [...svc].sort((a, b) => b.count - a.count).slice(0, 5), [svc]);
@@ -196,37 +193,7 @@ export default function Finanzas() {
 
           <Panel icon="staff" title="Cuánto pagarle a cada trabajadora"
             subtitle={`Su parte de los ${fmtMoney(fin.total)} del mes`}>
-            <div className="divide-y divide-border">
-              {byStaff.map(s => (
-                <details key={s.name} className="py-2.5 group">
-                  <summary className="flex items-center gap-3 cursor-pointer list-none">
-                    <Icon name="chevronRight" size={13} color="var(--text-muted)" />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold truncate flex items-center gap-1.5">
-                        {s.name}
-                        {owners.has(s.name) && (
-                          <span className="text-[9px] uppercase tracking-wider font-bold text-gold bg-gold-dim border border-gold/40 px-1.5 rounded-full">dueña</span>
-                        )}
-                      </div>
-                      <div className="text-[11px] text-text-muted">{s.count} cobro{s.count === 1 ? '' : 's'} · {fmtMoney(s.total)} vendido · ver desglose</div>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <div className="font-bold text-sm" style={{ color: '#6db86d' }}>{fmtMoney(s.trabajadora)}</div>
-                      {cupFmt(s.trabajadora * fx.rate) && <div className="text-[10px] text-text-muted">{cupFmt(s.trabajadora * fx.rate)}</div>}
-                    </div>
-                  </summary>
-
-                  <div className="mt-2 ml-6 rounded-lg border border-border bg-bg-elevated overflow-hidden">
-                    {[...s.byService.values()].sort((a, b) => b.trabajadora - a.trabajadora).map(d => (
-                      <SplitRow key={d.name} name={d.name} count={d.count} amount={d.amount}
-                        tier={d.tier} pctValue={Number(fx.tiers?.[d.tier || 'medio']?.trabajadora) || 0}
-                        value={d.trabajadora} color="#6db86d" />
-                    ))}
-                    <SplitTotal label="Total a pagarle" value={s.trabajadora} color="#6db86d" />
-                  </div>
-                </details>
-              ))}
-            </div>
+            <StaffPay fin={fin} tiers={fx.tiers} rate={fx.rate} owners={owners} />
             <p className="text-[11px] text-text-muted mt-3 pt-3 border-t border-border">
               Cuando un cobro lleva varios servicios, el monto se reparte entre ellos según
               su precio de lista, y a cada parte se le aplica el % de su nivel de costo.
@@ -438,34 +405,6 @@ function Big({ label, usd, cup, color, icon, loading }) {
         </div>
         {!loading && cupFmt(cup) && <div className="text-[11px] text-text-muted mt-0.5 truncate">{cupFmt(cup)}</div>}
       </div>
-    </div>
-  );
-}
-
-// Una línea del desglose: qué servicio, cuánto se cobró por él, qué % le toca
-// según su nivel de costo, y cuánto deja. En móvil el nombre se queda sin
-// sitio, así que ocupa su propia línea.
-function SplitRow({ name, count, amount, tier, pctValue, value, color }) {
-  const t = tierInfo(tier);
-  return (
-    <div className="flex flex-wrap items-center gap-x-2 px-3 py-2 border-b border-border last:border-0 text-[11px]">
-      <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: t.color }} />
-      <span className="min-w-0 basis-[calc(100%-1rem)] sm:basis-0 sm:flex-1">
-        {name}{count > 1 && <span className="text-text-muted"> ×{count}</span>}
-      </span>
-      <span className="text-text-muted whitespace-nowrap ml-3.5 sm:ml-0">
-        {fmtMoney(amount)} × {pctValue}% ({t.short})
-      </span>
-      <strong className="ml-auto text-right flex-shrink-0" style={{ color }}>{fmtMoney(value)}</strong>
-    </div>
-  );
-}
-
-function SplitTotal({ label, value, color }) {
-  return (
-    <div className="flex items-center gap-2 px-3 py-2 bg-bg-card text-[11px] font-semibold">
-      <span className="flex-1">{label}</span>
-      <strong style={{ color }}>{fmtMoney(value)}</strong>
     </div>
   );
 }

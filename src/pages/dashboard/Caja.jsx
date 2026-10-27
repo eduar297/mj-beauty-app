@@ -7,6 +7,7 @@ import { fmtMoney, fmtCup } from '../../lib/money';
 import { summarize, splitTransaction, indexServices } from '../../lib/finance';
 import { todayISO, addDaysISO, longDate } from '../../lib/dates';
 import { useFx } from '../../hooks/useFx.jsx';
+import StaffPay from '../../components/StaffPay.jsx';
 
 // Las tres partes en que se divide cada cobro.
 const SPLIT_CARDS = [
@@ -57,6 +58,7 @@ export default function Caja() {
   // Reparto del día: cuánto de lo cobrado va a materiales, a las trabajadoras
   // y a la dueña, según el nivel de costo de cada servicio.
   const fin = useMemo(() => summarize(txList, services, fx.tiers), [txList, services, fx.tiers]);
+  const owners = useMemo(() => new Set(staff.filter(s => s.role === 'admin').map(s => s.name)), [staff]);
   const byMethod = (m) => txList.filter(t => t.method === m).reduce((a, t) => a + Number(t.amount || 0), 0);
   const methodIcon = { efectivo: 'cash', tarjeta: 'card', transferencia: 'transfer' };
   const methodColor = { efectivo: '#6db86d', tarjeta: 'var(--gold)', transferencia: '#64a0d0' };
@@ -127,6 +129,23 @@ export default function Caja() {
           </p>
         )}
       </section>
+
+      {fin.byStaff.size > 0 && (
+        <section className="bg-bg-card border border-border rounded-2xl p-4 mb-5">
+          <div className="flex items-center gap-2 mb-1">
+            <Icon name="staff" size={15} color="#6db86d" />
+            <h2 className="font-serif text-sm font-semibold">A pagar por este día</h2>
+          </div>
+          <p className="text-[11px] text-text-muted mb-2">Solo lo cobrado el {longDate(date)}</p>
+          <StaffPay fin={fin} tiers={fx.tiers} rate={dayRate} owners={owners} />
+          {fin.byStaff.has('Sin asignar') && (
+            <p className="text-[11px] text-amber-400 mt-2.5 pt-2.5 border-t border-border">
+              Hay cobros sin empleada. Elígela al registrar el pago para que se reparta
+              a quien lo hizo.
+            </p>
+          )}
+        </section>
+      )}
 
       <div className="bg-bg-card border border-border rounded-2xl overflow-hidden">
         <div className="px-4 py-3 border-b border-border flex justify-between text-sm">
