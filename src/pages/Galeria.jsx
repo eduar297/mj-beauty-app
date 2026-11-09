@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Icon, ListLoading, BeforeAfterPair, PhotoTile, Lightbox, photosToSlides, CAT_COLORS, CAT_ICONS } from '../components/ui.jsx';
 import { api_service_photos } from '../lib/api';
+import { useSeason, SeasonHeaderDecor } from '../components/Season.jsx';
 
 const CATS = ['Uñas', 'Pedicura', 'Pelo', 'Faciales', 'Cejas', 'Pestañas'];
 const TYPES = [
@@ -12,6 +13,7 @@ const TYPES = [
 
 export default function Galeria() {
   const nav = useNavigate();
+  const season = useSeason();
   const [photos, setPhotos] = useState(null); // null = loading
   const [cat, setCat] = useState('all');
   const [type, setType] = useState('all');
@@ -38,7 +40,8 @@ export default function Galeria() {
 
   return (
     <div className="min-h-screen bg-bg text-text">
-      <div className="sticky top-0 z-10 bg-bg-card/90 backdrop-blur border-b border-border h-16 flex items-center justify-between px-4 sm:px-10 gap-3">
+      <div className="sticky top-0 z-10 bg-bg-card/90 backdrop-blur border-b border-border h-16 flex items-center justify-between px-4 sm:px-10 gap-3 relative">
+        <SeasonHeaderDecor season={season} />
         <div className="flex items-center gap-3 min-w-0">
           <button onClick={() => nav('/')} className="border border-border rounded-lg px-3 py-1.5 text-xs text-text-secondary flex items-center gap-1 cursor-pointer hover:border-gold transition-colors">
             <Icon name="chevronLeft" size={13} /><span className="hidden sm:inline">Inicio</span>

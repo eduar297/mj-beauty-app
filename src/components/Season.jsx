@@ -12,13 +12,19 @@ function override() {
 /** Temporada activa (null = sin decoración).
  *  Manda el modo guardado en Personalización ('auto' | 'off' | id de temporada);
  *  en 'auto' decide la fecha. Pone data-season en <html> para el CSS. */
+// Una sola petición para toda la app: cada tarjeta monta su propio useSeason.
+let modePromise;
+const loadMode = () => (modePromise ||= api_settings.get()
+  .then(({ data }) => data?.season_mode || 'auto')
+  .catch(() => 'auto'));
+
 export function useSeason() {
   const [mode, setMode] = useState('auto');
   const [season, setSeason] = useState(() => override() ?? getSeason());
 
   useEffect(() => {
     let alive = true;
-    api_settings.get().then(({ data }) => { if (alive) setMode(data?.season_mode || 'auto'); }).catch(() => {});
+    loadMode().then(m => { if (alive) setMode(m); });
     return () => { alive = false; };
   }, []);
 
@@ -88,7 +94,7 @@ export function Snow({ count = 24 }) {
 
 /** Guirnalda colgante: cable en curva (SVG estirable) con bombillas que
  *  siguen la caída y parpadean desfasadas. El contenedor debe ser relative. */
-export function Lights({ count = 16 }) {
+export function Lights({ count = 16, className = '' }) {
   const bulbs = Array.from({ length: count }, (_, i) => {
     const t = count === 1 ? 0 : i / (count - 1);
     // Misma curva que el cable: festones de dos arcos a lo ancho.
@@ -96,7 +102,7 @@ export function Lights({ count = 16 }) {
     return { left: `${t * 100}%`, top: `${6 + sag * 11}px`, delay: `${(i % 5) * 0.28}s` };
   });
   return (
-    <div className="season-lights" aria-hidden="true">
+    <div className={`season-lights ${className}`} aria-hidden="true">
       <svg className="season-lights-wire" viewBox="0 0 100 20" preserveAspectRatio="none">
         <path d="M0 6 Q 12.5 20 25 6 T 50 6 T 75 6 T 100 6" fill="none" stroke="currentColor" strokeWidth="0.7" />
       </svg>
@@ -180,5 +186,43 @@ export function SnowBank({ className = '' }) {
       <path d="M0 70V34c120-18 210 10 330 8s170-26 300-22 190 30 320 26 250-28 370-16 120 10 120 10v30z" fill="#ffffff" opacity="0.92" />
       <path d="M0 70V50c150-10 250 8 400 6s230-18 380-14 230 20 380 12 280-14 280-14v30z" fill="#eaf2ff" opacity="0.85" />
     </svg>
+  );
+}
+
+/** Bolas colgando del borde superior de una sección (contenedor relative). */
+export function Baubles({ lefts = [8, 18, 86, 94], className = '' }) {
+  const colors = ['#c62a3b', '#1d7140', '#d8a32b', '#3b6fd4'];
+  return (
+    <div className={`season-baubles ${className}`} aria-hidden="true">
+      {lefts.map((l, i) => (
+        <i key={i} style={{ left: `${l}%`, height: `${26 + (i % 3) * 16}px`, animationDelay: `${(i % 4) * 0.5}s` }}>
+          <b style={{ background: colors[i % colors.length] }} />
+        </i>
+      ))}
+    </div>
+  );
+}
+
+/** Capita de nieve posada en el borde superior de una foto. */
+export function SnowCap({ className = '' }) {
+  return (
+    <svg viewBox="0 0 200 18" preserveAspectRatio="none" aria-hidden="true"
+      className={`season-snowcap ${className}`}>
+      <path d="M0 6 Q5 13 10 7 Q15 15 20 6 Q25 11 30 8 Q35 16 40 6 Q45 12 50 7 Q55 14 60 6 Q65 10 70 8 Q75 15 80 7 Q85 13 90 6 Q95 11 100 8 Q105 16 110 6 Q115 12 120 7 Q125 14 130 7 Q135 11 140 6 Q145 15 150 8 Q155 13 160 6 Q165 12 170 7 Q175 16 180 8 Q185 11 190 6 Q195 14 200 7 L200 0 L0 0 Z" fill="#fff" />
+      <circle cx="46" cy="15" r="2.2" fill="#fff" />
+      <circle cx="128" cy="16" r="2.6" fill="#fff" />
+    </svg>
+  );
+}
+
+/** Nieve + guirnalda para las páginas internas (servicios, productos, galería).
+ *  El contenedor de la cabecera pegajosa debe ser relative. */
+export function SeasonHeaderDecor({ season, lights = 12, snow = 14 }) {
+  if (!season) return null;
+  return (
+    <>
+      {season.decor === 'snow' && <Snow count={snow} />}
+      <Lights count={lights} />
+    </>
   );
 }

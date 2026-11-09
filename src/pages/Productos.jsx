@@ -3,12 +3,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Icon, ListLoading, PROD_CAT_COLORS, PROD_CAT_ICONS } from '../components/ui.jsx';
 import ProductCard from '../components/ProductCard.jsx';
 import { api_products, api_settings } from '../lib/api';
+import { useSeason, SeasonHeaderDecor } from '../components/Season.jsx';
 
 const CATS = ['Uñas', 'Piel', 'Cabello', 'Maquillaje', 'Accesorios', 'Otros'];
 
 export default function Productos() {
   const { cat: paramCat } = useParams();
   const nav = useNavigate();
+  const season = useSeason();
   // 'Todos' por defecto: el catálogo de productos es más chico que el de servicios.
   const [activeCat, setActiveCat] = useState(CATS.includes(paramCat) ? paramCat : 'Todos');
   const [products, setProducts] = useState(null); // null = loading
@@ -23,7 +25,8 @@ export default function Productos() {
 
   return (
     <div className="min-h-screen bg-bg text-text">
-      <div className="sticky top-0 z-10 bg-bg-card/90 backdrop-blur border-b border-border h-16 flex items-center justify-between px-4 sm:px-10 gap-3">
+      <div className="sticky top-0 z-10 bg-bg-card/90 backdrop-blur border-b border-border h-16 flex items-center justify-between px-4 sm:px-10 gap-3 relative">
+        <SeasonHeaderDecor season={season} />
         <div className="flex items-center gap-3 min-w-0">
           <button onClick={() => nav('/')} className="border border-border rounded-lg px-3 py-1.5 text-xs text-text-secondary flex items-center gap-1 cursor-pointer hover:border-gold transition-colors">
             <Icon name="chevronLeft" size={13} /><span className="hidden sm:inline">Inicio</span>

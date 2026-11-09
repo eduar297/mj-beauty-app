@@ -1,6 +1,7 @@
 import { Icon, PROD_CAT_COLORS } from './ui.jsx';
 import { usdAmount } from '../lib/money';
 import Price from './Price.jsx';
+import { useSeason, SnowCap } from './Season.jsx';
 
 // Con stock ≤ LOW_STOCK (y > 0) se muestra "¡Últimas unidades!".
 export const LOW_STOCK = 3;
@@ -9,6 +10,7 @@ export const LOW_STOCK = 3;
 // WhatsApp con mensaje pre-armado; si el número no está configurado en
 // Personalización, el botón simplemente no se muestra.
 export default function ProductCard({ product: p, whatsapp }) {
+  const season = useSeason();
   const color = PROD_CAT_COLORS[p.cat] || 'var(--gold)';
   const out = (p.stock ?? 0) <= 0;
   const low = !out && p.stock <= LOW_STOCK;
@@ -22,6 +24,7 @@ export default function ProductCard({ product: p, whatsapp }) {
         {p.photo_url
           ? <img src={p.photo_url} alt={p.name} loading="lazy" className={`w-full h-full object-cover ${out ? 'grayscale opacity-60' : ''}`} />
           : <div className="w-full h-full grid place-items-center"><Icon name="bag" size={36} color="var(--gold)" /></div>}
+        {season?.id === 'navidad' && <SnowCap />}
         {out && (
           <span className="absolute top-2.5 right-2.5 bg-bg-card/90 text-red-400 border border-border-strong text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
             Agotado

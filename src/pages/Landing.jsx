@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Icon, Modal, GoldDivider, BeforeAfterPair, PhotoTile, Lightbox, photosToSlides, Stars, Avatar, Field, Input, Textarea, Btn } from '../components/ui.jsx';
 import PublicBookingForm, { readLocalIdentity, saveLocalIdentity } from '../components/PublicBookingForm.jsx';
 import ProductCard from '../components/ProductCard.jsx';
-import { useSeason, Snow, Lights, SantaHat, Sleigh, SnowBank, SeasonIcon } from '../components/Season.jsx';
+import { useSeason, Snow, Lights, SantaHat, Sleigh, SnowBank, SeasonIcon, Baubles, SnowCap } from '../components/Season.jsx';
 import { api_service_photos, api_settings, api_products, api_reviews, api_clients } from '../lib/api';
 
 export default function Landing() {
@@ -125,7 +125,8 @@ export default function Landing() {
           </div>
         </section>
 
-        <section id="servicios" className="px-4 py-20 sm:px-10 bg-bg-card scroll-mt-20">
+        <section id="servicios" className="px-4 py-20 sm:px-10 bg-bg-card scroll-mt-20 relative">
+          {season && <Baubles lefts={[7, 16, 85, 93]} />}
           <div className="max-w-5xl mx-auto">
             <div className="text-center mb-10">
               <div className="text-[11px] uppercase tracking-widest text-gold mb-3">Lo que hacemos</div>
@@ -138,6 +139,7 @@ export default function Landing() {
                   className="group bg-bg-card border border-border hover:border-gold/40 rounded-2xl overflow-hidden transition hover:-translate-y-1 motion-reduce:transform-none hover:shadow-xl cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/60 focus-visible:ring-offset-2 focus-visible:ring-offset-bg-card">
                   <div className="relative overflow-hidden" style={{ height: 'clamp(80px,14vw,110px)' }}>
                     <img src={c.img} alt="" aria-hidden="true" loading="lazy" className="w-full h-full object-cover group-hover:scale-105 motion-reduce:transform-none transition" />
+                    {season?.id === 'navidad' && <SnowCap />}
                   </div>
                   <div className="p-3.5">
                     <div className="font-bold text-sm">{c.label}</div>
@@ -155,7 +157,8 @@ export default function Landing() {
         </section>
 
         {galleryPhotos.length > 0 && (
-          <section id="galeria" className="px-4 py-20 sm:px-10 scroll-mt-20">
+          <section id="galeria" className="px-4 py-20 sm:px-10 scroll-mt-20 relative">
+            {season && <Baubles lefts={[9, 90]} />}
             <div className="max-w-5xl mx-auto">
               <div className="text-center mb-10">
                 <div className="text-[11px] uppercase tracking-widest text-gold mb-3">Nuestro trabajo</div>
@@ -179,7 +182,8 @@ export default function Landing() {
         )}
 
         {products.length > 0 && (
-          <section id="productos" className="px-4 py-20 sm:px-10 bg-bg-card scroll-mt-20">
+          <section id="productos" className="px-4 py-20 sm:px-10 bg-bg-card scroll-mt-20 relative">
+            {season && <Baubles lefts={[6, 92]} />}
             <div className="max-w-5xl mx-auto">
               <div className="text-center mb-10">
                 <div className="text-[11px] uppercase tracking-widest text-gold mb-3">Llévate la belleza a casa</div>
@@ -333,7 +337,8 @@ export default function Landing() {
         </section>
       </main>
 
-      <footer className="border-t border-border py-10 px-4 sm:px-10 bg-[var(--sidebar-bg)]">
+      <footer className="border-t border-border py-10 px-4 sm:px-10 bg-[var(--sidebar-bg)] relative">
+        {season && <Lights count={14} className="inside" />}
         <div className="max-w-5xl mx-auto flex flex-wrap justify-between gap-3 items-center">
           <div>
             <div className="font-serif text-xl text-gold font-bold">{brand}</div>

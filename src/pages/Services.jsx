@@ -5,10 +5,12 @@ import PublicBookingForm from '../components/PublicBookingForm.jsx';
 import { api_services, api_service_photos } from '../lib/api';
 import { fmtDuration as fmtDur } from '../lib/duration';
 import Price from '../components/Price.jsx';
+import { useSeason, SeasonHeaderDecor, SnowCap } from '../components/Season.jsx';
 
 export default function Services() {
   const { cat: paramCat } = useParams();
   const nav = useNavigate();
+  const season = useSeason();
   const cats = ['Uñas', 'Pedicura', 'Pelo', 'Faciales', 'Cejas', 'Pestañas'];
   const [activeCat, setActiveCat] = useState(paramCat || 'Uñas');
   const [services, setServices] = useState(null); // null = loading
@@ -42,7 +44,8 @@ export default function Services() {
 
   return (
     <div className="min-h-screen bg-bg text-text">
-      <div className="sticky top-0 z-10 bg-bg-card/90 backdrop-blur border-b border-border h-16 flex items-center justify-between px-4 sm:px-10 gap-3">
+      <div className="sticky top-0 z-10 bg-bg-card/90 backdrop-blur border-b border-border h-16 flex items-center justify-between px-4 sm:px-10 gap-3 relative">
+        <SeasonHeaderDecor season={season} />
         <div className="flex items-center gap-3 min-w-0">
           <button onClick={() => nav('/')} className="border border-border rounded-lg px-3 py-1.5 text-xs text-text-secondary flex items-center gap-1 cursor-pointer hover:border-gold transition-colors">
             <Icon name="chevronLeft" size={13} /><span className="hidden sm:inline">Inicio</span>
@@ -91,6 +94,7 @@ export default function Services() {
                     aria-label={`Ver fotos de ${s.name}`}
                     className="h-40 overflow-hidden relative cursor-pointer block w-full">
                     <img src={s.photo_url || SVC_IMGS[s.cat]} alt={s.name} loading="lazy" className="w-full h-full object-cover group-hover:scale-105 motion-reduce:transform-none transition" />
+                    {season?.id === 'navidad' && <SnowCap />}
                     {s.popular && (
                       <div style={{ background: `${color}cc` }} className="absolute top-2.5 right-2.5 text-[9px] font-bold text-[#0d0c0a] px-2 py-0.5 rounded-full uppercase tracking-wider">Popular</div>
                     )}
