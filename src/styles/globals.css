@@ -221,15 +221,10 @@ details[open] > summary > svg { transform: rotate(90deg); }
   font-size: 11px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
+  /* Tonos oscurecidos para que el texto blanco pase 4.5:1 en todo el degradado. */
   color: #fff;
-  background: linear-gradient(90deg, #d6283b, #2f9e5e);
-  background-size: 200% 100%;
-  box-shadow: 0 2px 12px rgba(214, 40, 59, 0.25);
-  animation: seasonShimmer 6s linear infinite;
-}
-@keyframes seasonShimmer {
-  from { background-position: 0% 0; }
-  to   { background-position: 200% 0; }
+  background: linear-gradient(90deg, #b01729, #1d7140);
+  box-shadow: 0 2px 12px rgba(176, 23, 41, 0.22);
 }
 
 @media (prefers-reduced-motion: reduce) {

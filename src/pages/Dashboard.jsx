@@ -3,7 +3,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth.jsx';
 import { Icon, Avatar } from '../components/ui.jsx';
 import { api_notifications } from '../lib/api';
-import { useSeason, Lights, SantaHat } from '../components/Season.jsx';
+import { useSeason, Lights, SantaHat, SeasonIcon } from '../components/Season.jsx';
 import Agenda from './dashboard/Agenda.jsx';
 import Clientes from './dashboard/Clientes.jsx';
 import Servicios from './dashboard/Servicios.jsx';
@@ -160,7 +160,7 @@ export default function Dashboard() {
           <div className="flex items-center gap-3">
             <button onClick={() => setDrawer(true)} className="md:hidden text-text-secondary p-1.5"><Icon name="menu" size={20} /></button>
             <div className="hidden sm:block text-xs text-text-muted">Hoy — <span className="text-text-secondary">{new Date().toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' })}</span></div>
-            {season && <span className="text-sm" title={season.greeting} aria-label={season.greeting}>{season.badge}</span>}
+            {season && <span className="text-gold" title={season.greeting} aria-label={season.greeting}><SeasonIcon season={season} size={15} /></span>}
           </div>
           <div className="flex items-center gap-3 relative">
             {/* Bell de notificaciones */}

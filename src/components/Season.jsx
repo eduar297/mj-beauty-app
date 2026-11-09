@@ -42,6 +42,21 @@ const reducedMotion = () =>
 
 const FLAKES = ['❄', '❅', '✦', '•'];
 
+/** Icono de la temporada en SVG (los emoji cambian de forma en cada móvil).
+ *  Si una temporada nueva no trae icono, cae en su emoji. */
+export function SeasonIcon({ season, size = 13 }) {
+  if (!season) return null;
+  if (season.id === 'navidad') {
+    return (
+      <svg viewBox="0 0 24 24" width={size} height={size} aria-hidden="true" className="flex-shrink-0">
+        <path d="M12 2l4 6h-2.5l3.5 5h-2.5l4 6H5.5l4-6H7l3.5-5H8z" fill="currentColor" />
+        <rect x="10.8" y="19" width="2.4" height="3" fill="currentColor" />
+      </svg>
+    );
+  }
+  return <span aria-hidden="true">{season.badge}</span>;
+}
+
 /** Nevada en tres capas (las de atrás, pequeñas y borrosas; las de delante,
  *  grandes y nítidas) para que se note profundidad. No intercepta clics. */
 export function Snow({ count = 24 }) {

@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Icon, Modal, GoldDivider, BeforeAfterPair, PhotoTile, Lightbox, photosToSlides, Stars, Avatar, Field, Input, Textarea, Btn } from '../components/ui.jsx';
 import PublicBookingForm, { readLocalIdentity, saveLocalIdentity } from '../components/PublicBookingForm.jsx';
 import ProductCard from '../components/ProductCard.jsx';
-import { useSeason, Snow, Lights, SantaHat, Sleigh, SnowBank } from '../components/Season.jsx';
+import { useSeason, Snow, Lights, SantaHat, Sleigh, SnowBank, SeasonIcon } from '../components/Season.jsx';
 import { api_service_photos, api_settings, api_products, api_reviews, api_clients } from '../lib/api';
 
 export default function Landing() {
@@ -99,9 +99,15 @@ export default function Landing() {
               <img src="/assets/logo.jpeg" alt={`Logo ${brand}`} className="w-full h-full rounded-full object-cover border border-gold/30 shadow-lg shadow-gold/10" />
               {season?.id === 'navidad' && <SantaHat size={64} />}
             </div>
-            {season && <div className="season-pill mb-4">{season.badge} {season.greeting}</div>}
-            <div className="inline-flex items-center gap-2 border border-border-strong rounded-full px-4 py-1 mb-6 text-[11px] text-gold uppercase tracking-widest">
-              <span className="w-1.5 h-1.5 rounded-full bg-gold" aria-hidden="true" /> {s.tagline || 'Salón de Belleza Premium'}
+            <div className="flex flex-wrap items-center justify-center gap-2 mb-6">
+              {season && (
+                <span className="season-pill">
+                  <SeasonIcon season={season} /> {season.greeting}
+                </span>
+              )}
+              <span className="inline-flex items-center gap-2 border border-border-strong rounded-full px-4 py-1 text-[11px] text-gold uppercase tracking-widest">
+                <span className="w-1.5 h-1.5 rounded-full bg-gold" aria-hidden="true" /> {s.tagline || 'Salón de Belleza Premium'}
+              </span>
             </div>
             <h1 className="font-serif font-bold leading-[1.05] text-text" style={{ fontSize: 'clamp(36px,8vw,88px)' }}>
               Tu Belleza,<br /><span className="text-gold italic">Nuestro Arte</span>
