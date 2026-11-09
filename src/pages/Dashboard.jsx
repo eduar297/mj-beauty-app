@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '../hooks/useAuth.jsx';
 import { Icon, Avatar } from '../components/ui.jsx';
 import { api_notifications } from '../lib/api';
+import { useSeason, Lights, SantaHat } from '../components/Season.jsx';
 import Agenda from './dashboard/Agenda.jsx';
 import Clientes from './dashboard/Clientes.jsx';
 import Servicios from './dashboard/Servicios.jsx';
@@ -30,6 +31,7 @@ const TABS = [
 export default function Dashboard() {
   const { user, logout } = useAuth();
   const nav = useNavigate();
+  const season = useSeason();
   const [drawer, setDrawer] = useState(false);
   // Centro de notificaciones por empleada (cargadas + realtime).
   const [notifs, setNotifs] = useState([]); // [{ id, type, title, body, read_at, ... }]
@@ -94,12 +96,16 @@ export default function Dashboard() {
     <div className="flex h-screen overflow-hidden bg-bg">
       {/* Desktop sidebar */}
       <aside className="hidden md:flex flex-col w-[220px] flex-shrink-0 bg-[var(--sidebar-bg)] border-r border-border">
-        <div className="px-6 py-7 border-b border-border flex items-center gap-2.5">
-          <img src="/assets/logo.jpeg" alt="" className="w-9 h-9 rounded-full object-cover border border-gold/30" />
+        <div className="px-6 py-7 border-b border-border flex items-center gap-2.5 relative">
+          <div className="relative w-9 h-9 flex-shrink-0">
+            <img src="/assets/logo.jpeg" alt="" className="w-full h-full rounded-full object-cover border border-gold/30" />
+            {season?.id === 'navidad' && <SantaHat size={20} />}
+          </div>
           <div>
             <div className="font-serif text-xl font-bold text-gold leading-none">MJ Beauty</div>
-            <div className="text-[9px] tracking-widest uppercase text-text-muted mt-1">Panel</div>
+            <div className="text-[9px] tracking-widest uppercase text-text-muted mt-1">{season ? season.name : 'Panel'}</div>
           </div>
+          {season && <Lights count={10} />}
         </div>
         <nav className="flex-1 p-3 flex flex-col gap-0.5">
           {allowed.map(t => (
@@ -149,10 +155,12 @@ export default function Dashboard() {
 
       {/* Main */}
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-14 flex-shrink-0 flex items-center justify-between px-4 sm:px-7 border-b border-border bg-bg-card">
+        <header className="h-14 flex-shrink-0 flex items-center justify-between px-4 sm:px-7 border-b border-border bg-bg-card relative">
+          {season && <Lights count={14} />}
           <div className="flex items-center gap-3">
             <button onClick={() => setDrawer(true)} className="md:hidden text-text-secondary p-1.5"><Icon name="menu" size={20} /></button>
             <div className="hidden sm:block text-xs text-text-muted">Hoy — <span className="text-text-secondary">{new Date().toLocaleDateString('es-CO', { weekday: 'long', day: 'numeric', month: 'long' })}</span></div>
+            {season && <span className="text-sm" title={season.greeting} aria-label={season.greeting}>{season.badge}</span>}
           </div>
           <div className="flex items-center gap-3 relative">
             {/* Bell de notificaciones */}

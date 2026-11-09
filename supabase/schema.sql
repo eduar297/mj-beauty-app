@@ -160,6 +160,11 @@ alter table site_settings add column if not exists usd_to_cup numeric(12,2) defa
 alter table site_settings add column if not exists fx_updated_at timestamptz;
 alter table site_settings add column if not exists fx_source text; -- 'manual' | 'eltoque'
 
+-- Migration: decoración de temporada (Navidad, San Valentín…). 'auto' la
+-- enciende y apaga por calendario (ver src/lib/season.js), 'off' la deja
+-- apagada y el id de una temporada la fuerza. Se cambia desde Personalización.
+alter table site_settings add column if not exists season_mode text default 'auto';
+
 -- ───── Tabla: transactions (caja) ───────────────────────────────────
 create table if not exists transactions (
   id uuid primary key default uuid_generate_v4(),

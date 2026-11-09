@@ -3,6 +3,7 @@ import { Header } from '../Dashboard.jsx';
 import { Icon, Btn, Field, Input, Textarea, ListLoading, Spinner } from '../../components/ui.jsx';
 import PhotoCropEditor, { ASPECT_LANDING_CARD } from '../../components/PhotoCropEditor.jsx';
 import { api_settings, api_services } from '../../lib/api';
+import { SEASONS, getSeason } from '../../lib/season';
 import { TIERS, SHARES, DEFAULT_TIERS, normalizeTiers, tierSum, tiersValid } from '../../lib/finance';
 import { usdAmount } from '../../lib/money';
 
@@ -26,7 +27,15 @@ const EMPTY = {
   service_cat_photos: {},
   closed_weekdays: [0, 6],   // domingo y sábado cerrados por defecto
   cost_tiers: DEFAULT_TIERS, // reparto materiales/trabajadora/dueña
+  season_mode: 'auto',       // decoración de temporada: auto | off | id
 };
+
+// Opciones del selector de temporada: automático, cada temporada forzada, y apagado.
+const SEASON_MODES = [
+  { id: 'auto', label: 'Automático', hint: 'Se enciende y se apaga sola en sus fechas' },
+  ...SEASONS.map(s => ({ id: s.id, label: `${s.badge} ${s.name}`, hint: 'Siempre encendida, sin importar la fecha' })),
+  { id: 'off', label: 'Apagada', hint: 'La web se ve sin decoración' },
+];
 
 // Días de la semana, en el orden en que se leen (lunes primero).
 // El número es el que usa JS: 0=domingo … 6=sábado.
@@ -160,6 +169,29 @@ export default function Configuracion() {
             <Card icon="info" title="Identidad" subtitle="Cómo se llama tu negocio">
               <Field label="Nombre del negocio"><Input value={f.business_name} onChange={set('business_name')} placeholder="MJ Beauty" /></Field>
               <Field label="Eslogan / tagline"><Input value={f.tagline} onChange={set('tagline')} placeholder="Salón de Belleza Premium" /></Field>
+            </Card>
+
+            <Card icon="sparkle" title="Temporada" subtitle="Decoración de la web y del panel">
+              <div className="flex gap-1.5 flex-wrap">
+                {SEASON_MODES.map(m => {
+                  const on = (f.season_mode || 'auto') === m.id;
+                  return (
+                    <button key={m.id} type="button" aria-pressed={on}
+                      onClick={() => setF({ ...f, season_mode: m.id })}
+                      className={`px-3 py-2 rounded-lg border text-xs font-semibold cursor-pointer transition ${
+                        on ? 'bg-gold-dim border-gold/50 text-gold' : 'bg-bg-elevated border-border text-text-muted'
+                      }`}>
+                      {m.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="text-[11px] text-text-muted mt-2">
+                {SEASON_MODES.find(m => m.id === (f.season_mode || 'auto'))?.hint}
+                {(f.season_mode || 'auto') === 'auto' && (
+                  <> · Ahora mismo: <span className="text-text-secondary">{getSeason()?.name || 'sin temporada'}</span>.</>
+                )}
+              </div>
             </Card>
 
             <Card icon="sparkle" title="Sección Nosotras" subtitle="Texto que aparece en la web">

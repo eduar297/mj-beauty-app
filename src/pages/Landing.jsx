@@ -3,6 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Icon, Modal, GoldDivider, BeforeAfterPair, PhotoTile, Lightbox, photosToSlides, Stars, Avatar, Field, Input, Textarea, Btn } from '../components/ui.jsx';
 import PublicBookingForm, { readLocalIdentity, saveLocalIdentity } from '../components/PublicBookingForm.jsx';
 import ProductCard from '../components/ProductCard.jsx';
+import { useSeason, Snow, Lights, SantaHat, Sleigh, SnowBank } from '../components/Season.jsx';
 import { api_service_photos, api_settings, api_products, api_reviews, api_clients } from '../lib/api';
 
 export default function Landing() {
@@ -15,6 +16,7 @@ export default function Landing() {
   const [reviews, setReviews] = useState([]);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [lightbox, setLightbox] = useState(null); // { slides, index }
+  const season = useSeason();
 
   useEffect(() => {
     api_settings.get().then(({ data }) => setSettings(data || {}));
@@ -48,9 +50,11 @@ export default function Landing() {
 
   return (
     <div className="min-h-screen bg-bg text-text">
+      {season?.decor === 'snow' && <Snow />}
       <a href="#contenido" className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-[100] focus:bg-gold focus:text-[#0d0c0a] focus:px-3 focus:py-1.5 focus:rounded-md focus:font-semibold">Saltar al contenido</a>
 
-      <nav className="sticky top-0 z-50 bg-bg-card/80 backdrop-blur border-b border-border h-16 flex items-center justify-between px-4 sm:px-10">
+      <nav className="sticky top-0 z-50 bg-bg-card/80 backdrop-blur border-b border-border h-16 flex items-center justify-between px-4 sm:px-10 relative">
+        {season && <Lights />}
         <div className="font-serif text-xl font-bold text-gold">{brand.split(' ')[0]} <span className="italic font-normal">{brand.split(' ').slice(1).join(' ') || 'Beauty'}</span></div>
         <div className="hidden md:flex gap-8 text-sm text-text-secondary">
           <a href="#servicios" className="hover:text-gold transition-colors focus-visible:outline-none focus-visible:text-gold">Servicios</a>
@@ -88,8 +92,14 @@ export default function Landing() {
         <section className="sm:min-h-[88vh] flex items-start sm:items-center justify-center px-4 pt-8 pb-12 sm:py-20 sm:px-10 relative overflow-hidden">
           {/* <img src="/assets/hero-bg.png" alt="" aria-hidden="true" className="absolute inset-0 w-full h-full object-cover opacity-20 dark:opacity-40 pointer-events-none" /> */}
           <div className="absolute inset-0 bg-gradient-to-b from-bg via-transparent to-bg pointer-events-none" />
+          {season && <Sleigh />}
+          {season?.id === 'navidad' && <SnowBank />}
           <div className="relative z-10 max-w-3xl text-center w-full">
-            <img src="/assets/logo.jpeg" alt={`Logo ${brand}`} className="w-44 h-44 sm:w-32 sm:h-32 mx-auto mb-5 rounded-full object-cover border border-gold/30 shadow-lg shadow-gold/10" />
+            <div className="relative w-44 h-44 sm:w-32 sm:h-32 mx-auto mb-5">
+              <img src="/assets/logo.jpeg" alt={`Logo ${brand}`} className="w-full h-full rounded-full object-cover border border-gold/30 shadow-lg shadow-gold/10" />
+              {season?.id === 'navidad' && <SantaHat size={64} />}
+            </div>
+            {season && <div className="season-pill mb-4">{season.badge} {season.greeting}</div>}
             <div className="inline-flex items-center gap-2 border border-border-strong rounded-full px-4 py-1 mb-6 text-[11px] text-gold uppercase tracking-widest">
               <span className="w-1.5 h-1.5 rounded-full bg-gold" aria-hidden="true" /> {s.tagline || 'Salón de Belleza Premium'}
             </div>

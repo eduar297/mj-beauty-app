@@ -106,3 +106,132 @@ html { scroll-behavior: smooth; }
 summary::-webkit-details-marker { display: none; }
 summary > svg { transition: transform .15s; }
 details[open] > summary > svg { transform: rotate(90deg); }
+
+
+/* ── Decoración de temporada ────────────────────────────────────────────────
+   Se activa con data-season en <html> (ver src/lib/season.js). Todo es
+   decorativo: pointer-events:none y se apaga solo con prefers-reduced-motion. */
+
+.season-snow {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 45;
+}
+.season-snow > span {
+  position: absolute;
+  top: -5%;
+  color: var(--season-flake, #8fc3ff);
+  text-shadow: 0 0 6px rgba(120, 170, 255, 0.45);
+  animation: seasonFall linear infinite;
+  will-change: transform;
+}
+@keyframes seasonFall {
+  from { transform: translate3d(0, -5vh, 0) rotate(0deg); }
+  50%  { transform: translate3d(var(--drift, 12px), 50vh, 0) rotate(180deg); }
+  to   { transform: translate3d(0, 105vh, 0) rotate(360deg); }
+}
+
+/* Guirnalda colgante: cable en festones + bombillas que parpadean desfasadas. */
+.season-lights {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 22px;
+  pointer-events: none;
+  color: var(--border-strong);
+  z-index: 2;
+}
+.season-lights-wire { position: absolute; inset: 0; width: 100%; height: 100%; }
+.season-lights > i {
+  position: absolute;
+  width: 7px;
+  height: 10px;
+  margin-left: -3.5px;
+  border-radius: 50% 50% 60% 60%;
+  background: var(--season-bulb, #e8649a);
+  box-shadow: 0 0 8px 1.5px var(--season-bulb, #e8649a);
+  animation: seasonTwinkle 2.4s ease-in-out infinite;
+}
+.season-lights > i::before {               /* casquillo */
+  content: '';
+  position: absolute;
+  top: -3px; left: 1.5px;
+  width: 4px; height: 3px;
+  border-radius: 1px;
+  background: #6b5a46;
+}
+.season-lights > i:nth-child(4n+1) { --season-bulb: #e3263b; }
+.season-lights > i:nth-child(4n+2) { --season-bulb: #2f9e5e; }
+.season-lights > i:nth-child(4n+3) { --season-bulb: #f0b429; }
+.season-lights > i:nth-child(4n)   { --season-bulb: #3b82f6; }
+@keyframes seasonTwinkle {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.22; }
+}
+
+/* Trineo: cruza la pantalla, sube y baja un poco, y descansa entre pasadas. */
+/* Vuela por la banda baja del hero (sobre el banco de nieve), nunca por
+   encima del logo, y por detrás del contenido (z-10) por si acaso. */
+.season-sleigh {
+  position: absolute;
+  bottom: clamp(14px, 3vh, 40px);   /* rasante sobre el banco de nieve */
+  left: 0;
+  pointer-events: none;
+  z-index: 5;
+  animation: seasonFly 26s ease-in-out infinite;
+  will-change: transform;
+}
+.season-sleigh > svg {
+  display: block;
+  width: clamp(92px, 16vw, 170px);
+  height: auto;
+  animation: seasonBob 2.6s ease-in-out infinite;
+}
+.season-sleigh-trail {
+  position: absolute;
+  top: 60%;
+  right: 100%;
+  width: clamp(80px, 14vw, 170px);
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, rgba(240, 180, 41, 0.55));
+  filter: blur(1.5px);
+}
+@keyframes seasonFly {
+  0%        { transform: translateX(-30vw); opacity: 0; }
+  6%        { opacity: 1; }
+  44%       { opacity: 1; }
+  50%, 100% { transform: translateX(125vw); opacity: 0; }
+}
+@keyframes seasonBob {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50%      { transform: translateY(-10px) rotate(2deg); }
+}
+
+/* Pill festivo (saludo de temporada) */
+.season-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border-radius: 9999px;
+  padding: 0.25rem 0.85rem;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #fff;
+  background: linear-gradient(90deg, #d6283b, #2f9e5e);
+  background-size: 200% 100%;
+  box-shadow: 0 2px 12px rgba(214, 40, 59, 0.25);
+  animation: seasonShimmer 6s linear infinite;
+}
+@keyframes seasonShimmer {
+  from { background-position: 0% 0; }
+  to   { background-position: 200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .season-snow, .season-sleigh { display: none; }
+}
