@@ -1,456 +1,303 @@
-# Plan: plataforma para negocios (basada en MJ Beauty + modelo Master/Tenants de More Hub)
+# Plan definitivo: More Hub como plataforma (tienda + servicios + landings personalizables)
+
+Escrito el **14 de noviembre de 2026** tras analizar a fondo los cuatro repos:
+`mj-beauty-app`, `more-hub2` (app), `more-hub-admin` (panel master) y `more-hub-web` (web pública).
 
 > Objetivo: cuando llegue un cliente nuevo, **en un día** le enseñas un catálogo de landings, se la
-> personalizas con clics, le activas solo los módulos de gestión que necesita, la despliegas con su
-> dominio desde tu panel y cobras. Sin rehacer nada desde cero.
+> personalizas con clics, le activas los módulos que necesita (tienda, servicios o ambos, con uno o
+> varios locales), le despliegas la web con su dominio desde tu panel, le das la app de gestión que
+> funciona sin internet, y cobras.
 
 ---
 
-## 0. Resumen
+## 1. La decisión: no construir una plataforma nueva. **More Hub ES la plataforma.**
 
-| Necesidad | Cómo lo resolvemos |
-|---|---|
-| Un panel tuyo que lo controla todo | **Panel Master** (como `more-hub-admin`): crear negocio, módulos, plantilla, desplegar, pausar, suspender, actualizar, ver uso, cobros |
-| Base de datos | **Supabase Master** (solo directorio y control) + **pool de Supabase Tenant** (los datos de los negocios) |
-| Varios clientes en un mismo tenant | Sí, como en More Hub (migraciones 010/025/026): `business_id` en cada fila + RLS. Llenas un proyecto (aviso con `max_businesses`) y abres otro |
-| Web de cada cliente | **Un proyecto Vercel por cliente, con su dominio.** Varias cuentas de Vercel (pool), cada una con varios proyectos, gestionadas desde el panel |
-| Landing **totalmente** personalizable y distinta | Editor visual **Puck** + kit de bloques con variantes + motor de temas |
-| Catálogo de landings para enseñar | Plantillas (JSON + tema) con capturas automáticas y link de vista previa por WhatsApp |
-| Gestión "un poco" personalizable | Paleta/logo/fuentes + módulos que se encienden y apagan + vocabulario por rubro |
-| Solo tienda / solo servicios / ambos | Módulos por negocio; menú, panel y landing se adaptan solos |
-| Varios locales, finanzas por local o juntas | `locations` (equivalente a los "puntos" de More Hub): caja, stock, ventas, citas y finanzas por local o "Todos" |
-| Mala conexión en Cuba | **App de gestión offline (Expo)** con base local y cola de cambios que se sube sola al volver la señal; reutiliza el motor de sync de More Hub |
-| IA (Jev) | **Fuera** para clientes. Solo MJ. Más adelante, posible extra de pago |
+### Lo que encontré al analizar
 
----
-
-## 1. Lo que tomamos de More Hub Admin (tu propio sistema)
-
-Revisé `eduar297/more-hub-admin`. Ya resuelve gran parte del problema y lo vamos a **reutilizar**:
-
-| Pieza de More Hub | Qué hace | Cómo la usamos aquí |
+| | MJ Beauty | More Hub |
 |---|---|---|
-| Supabase **Master** sin datos de negocio | Solo `businesses`, `tenants`, licencias, pagos, precios, errores, versiones | Igual. Añadimos cuentas Vercel, sitios, plantillas, módulos |
-| `tenants` = proyectos Supabase en un **pool** | Se provisionan aparte y al crear un negocio se elige uno con hueco | Igual |
-| **Varios negocios por tenant** (master 010, tenant 025/026) | `business_id` en cada tabla, helper `mh_business()`, policies con `using` + `with check`, "freno de mano" si hay filas sin negocio, `max_businesses` como aviso (no candado), el Admin se niega a meter un 2º negocio en un tenant sin aislamiento | **Exactamente igual** desde el día 1: el esquema nace con `business_id` y RLS |
-| Credenciales por cuenta (master 011/019) | Token (PAT) de cada cuenta Supabase dueña de sus proyectos; `service_role` cifrado con **AES-256-GCM** | Igual, y lo mismo para los **tokens de Vercel** |
-| Provisionamiento por **Management API** | Corre migraciones una a una, registro `_migrations`, secrets, Edge Functions, **tests de aislamiento** | Igual. Botones **"Provisionar"** y **"Actualizar todos"** |
-| Estados `active / paused / suspended` + licencia con vencimiento + prueba | La app consulta su estado al master | Igual: la web y el panel del cliente consultan al master; si está suspendido muestran "servicio pausado" |
-| Versión de cada negocio (master 018) | La app reporta qué versión trae y cuándo se vio | Igual: cada sitio reporta versión desplegada y último uso |
-| `entitlements` + `price_list` + `payments` + dashboard (MRR, vencimientos, adopción de módulos) | Cobros y módulos de pago por negocio | Igual: los **módulos** de esta plataforma son `entitlements` |
-| `error_logs`, logs, invitación de soporte, "datos/[tabla]" | Soporte y depuración | Igual |
-| Subnegocios y **puntos** (026/027) | Grupo de negocios y puntos de venta | Base para **locales** y cadenas |
+| Tipo | Web (Vite + React), un solo negocio | App Expo offline + panel master + web pública, **multi-negocio** |
+| Madurez | Buena lógica de salón, sin tests | **2.404 tests**, 84 migraciones de tenant, 43 de master, clientes reales (DIEZ67 market…) |
+| Seguridad | `anon_all` en todas las tablas; sesión del PIN en `localStorage` | RLS por `business_id` con `using` + `with check`, `business_id` inmutable, permisos por persona (`mh_can()`) |
+| Offline | No | Sí: SQLite + Drizzle + cola, reloj que no retrocede, P2P por WiFi, timeouts para la red de Cuba |
+| Master / tenants | No | Sí: pool de proyectos Supabase, varios negocios por tenant, provisionado y "Actualizar todos" por API |
+| Licencias y cobros | No | Sí: estados, vencimientos, `entitlements`, precios, pagos, MRR, IA de pago con topes |
+| Tienda | Catálogo + productos | POS completo: variantes, lotes, compras, traslados, cierres de turno, cajas, monedas, fiado, pedidos al almacén |
+| Varios locales | No | Sí: **puntos de venta** con stock y caja por punto, y "Todos" |
+| Personal | PIN por empleada, pago por trabajadora | Dependientes con clave, permisos, salarios, "solo ve lo de su turno" |
+| Costos | Insumos por servicio | Fichas de costo y recetas |
+| **Servicios / agenda / reservas** | **Sí, muy completo** (disponibilidad, horarios, días cerrados, varios servicios por cita, aviso Telegram) | **No existe** |
+| Reseñas, galería antes/después, temporada | Sí | No |
+| Web pública | Landing de salón muy cuidada, editable por campos | Catálogo de tienda (Next 15, SSR + ISR, ligera para Cuba), tema por negocio, **sin editor visual** |
+| IA | Jev para finanzas | Asistente y "decisión" con Jev, ya **cobrados como extra** con topes por negocio |
 
-Lecciones que More Hub ya pagó y que copiamos desde el principio: migraciones **re-ejecutables y una a
-una** (no todo de un tirón), separar "la cuenta dueña del token" (el famoso 403), credenciales con una
-sola fuente de verdad (el tenant, no copias en cada negocio), y nunca marcar en verde una migración que
-falló a medias.
+### Por qué More Hub y no una plataforma nueva
 
----
+1. **El 70 % de lo que pediste ya existe en More Hub y está probado en la calle**: master, tenants con
+   varios negocios, credenciales cifradas, licencias, pausar y suspender, cobros, módulos de pago,
+   app offline con cola, varios puntos (tus "locales" con finanzas por punto o juntas), monedas, cajas
+   y permisos. Rehacerlo costaría meses y repetiría errores que More Hub ya pagó (el cierre de los 900
+   pesos, los 262.990 CUP del reloj atrasado, las migraciones que se marcaban en verde a medias…).
+2. **Lo que falta es acotado y es justo lo que MJ hace bien**: servicios, agenda, reservas online,
+   reseñas, galería. Se **porta** la lógica de MJ (`availability.js`, `duration.js`, `dates.js`) como
+   un módulo nuevo de More Hub.
+3. **Un solo sistema que mantener.** Con dos plataformas parecidas, cada arreglo se haría dos veces.
+4. **Tus clientes en Cuba gestionan desde el teléfono** (el propio More Hub lo documenta: "nuestros
+   clientes no tienen computadora") y con mala conexión. La app offline es la respuesta correcta.
+5. **La IA ya es un extra de pago** en More Hub. Jev queda para MJ y para quien lo pague.
 
-## 2. Arquitectura
-
-```
-                  ┌───────────────────────────────────────────┐
-                  │            PANEL MASTER (tú)              │
-                  │ negocios · plantillas · editor · módulos  │
-                  │ desplegar · pausar · uso · cobros · logs  │
-                  └───────────────┬───────────────────────────┘
-                                  │
-                  ┌───────────────▼───────────────┐
-                  │       SUPABASE MASTER          │  solo control, cero datos de negocio
-                  │ businesses · tenants · cuentas │
-                  │ sitios · entitlements · pagos  │
-                  │ plantillas · uso · errores     │
-                  └──────┬─────────────────┬──────┘
-         service_role    │                 │   token Vercel (cifrados)
-         cifrado         │                 │
-   ┌─────────────────────▼──┐        ┌─────▼────────────────────────────┐
-   │ POOL SUPABASE TENANTS   │        │ POOL CUENTAS VERCEL               │
-   │ Tenant 1: MJ, Barbería  │        │ Cuenta A: mjbeauty.com,           │
-   │ Tenant 2: Tienda Y, …   │        │           barberiax.com, …        │
-   │ (business_id + RLS)     │        │ Cuenta B: tiendaY.com, …          │
-   └────────────▲────────────┘        └───────────────┬───────────────────┘
-                │                                     │
-                └─────── cada sitio lee/escribe ◄─────┘
-                         solo su business_id
-```
-
-- **Mismo código** en todos los sitios. Lo que cambia (landing, tema, módulos, textos, locales) vive en
-  la base: editar la landing **no requiere volver a desplegar**.
-- Cada proyecto Vercel recibe por variables: URL y anon key de su tenant, su `BUSINESS_ID` y la URL del
-  master.
-
-### Repos
-- **Panel Master**: decisión pendiente (sección 9). Lo más rápido es **extender `more-hub-admin`**
-  (ya tiene login, provisionamiento, cifrado, cobros, dashboard) con un segundo producto, o hacer uno
-  nuevo copiando esas piezas.
-- **App del cliente** (repo nuevo, monorepo pnpm + Turborepo):
-```
-apps/
-  web/        Landing pública + panel de gestión (un mismo código para todos los clientes)
-  app/        App de gestión Expo (Android/iOS/web), offline con cola
-packages/
-  sync/       Motor de sincronización offline (sacado de More Hub)
-  blocks/     EL KIT: bloques de la landing + config de Puck
-  theme/      Tokens, generador de paletas (OKLCH), fuentes, presets
-  ui/         Componentes del panel (shadcn) que leen el tema
-  core/       Lógica portada de MJ: disponibilidad, dinero, fechas, finanzas, tasa
-  db/         Migraciones del tenant (las que corre el Master), tipos generados, seeds por rubro
-  templates/  Plantillas del catálogo (JSON + tema + capturas)
-```
-  El Panel Master importa `blocks`, `theme` y `templates` para tener el editor y el catálogo.
-
-### Next.js en vez de Vite (recomendado)
-- La landing se genera en el servidor → **Google la indexa** y **al mandar el link por WhatsApp sale la
-  vista previa con foto y nombre** del negocio.
-- Al publicar en el editor se revalida solo esa página: cambio visible en segundos, sin redeploy.
-- More Hub Admin ya es Next 15: mismo stack, mismo conocimiento.
-- La lógica de `src/lib/*` de MJ (availability, money, dates, finance) es JS puro: se porta casi tal cual.
+### El riesgo y cómo se controla
+More Hub tiene clientes reales. Todo lo nuevo entra **apagado por defecto** y detrás de módulos:
+- Tablas nuevas (no cambios en las que ya existen) y columnas nuevas en `OPCIONALES_NULAS`, para que
+  ningún negocio que no use servicios deje de sincronizar.
+- Migraciones re-ejecutables, con sus tests de esquema, igual que hoy.
+- Pestañas nuevas que solo aparecen si el negocio tiene el módulo.
+- Se prueba primero con **MJ como cliente piloto** antes de ofrecerlo.
 
 ---
 
-## 3. Bases de datos
+## 2. Cómo queda el sistema
 
-### Supabase Master (control)
-Lo de More Hub (`businesses`, `tenants`, `license_history`, `usage_events`, `entitlements`,
-`price_list`, `payments`, `error_logs`, `_migrations`, `app_settings`, `app_releases`) **más**:
-- `supabase_accounts`: cuenta, PAT cifrado (para provisionar sus proyectos).
-- `vercel_accounts`: nombre, team id, token cifrado, nº de proyectos, notas.
-- `sites`: business_id, vercel_account_id, vercel_project_id, dominio(s), estado
-  (`draft/live/paused`), versión desplegada, último deploy, último uso visto.
-- `templates`: catálogo de landings (nombre, rubro, JSON de páginas, tema, captura, etiquetas).
-- `business_modules` (o dentro de `entitlements`): qué módulos tiene cada negocio y hasta cuándo.
-- `usage_daily`: métricas por negocio y día (ver sección 7).
+```
+                 ┌─────────────────────────────────────────────────────┐
+                 │  PANEL MASTER (more-hub-admin) — solo tú             │
+                 │  negocios · módulos · licencias · cobros · tenants   │
+                 │  NUEVO: cuentas Vercel · sitios · dominios · uso ·   │
+                 │         catálogo de plantillas · "Editar landing"    │
+                 └──────────────────────┬──────────────────────────────┘
+                                        │
+                        ┌───────────────▼────────────────┐
+                        │  SUPABASE MASTER (directorio)   │
+                        └───────┬───────────────┬────────┘
+                                │               │
+            ┌───────────────────▼──┐      ┌─────▼──────────────────────────────┐
+            │ POOL TENANTS SUPABASE │      │ POOL CUENTAS VERCEL                 │
+            │ varios negocios por   │      │ un proyecto por cliente (dominio    │
+            │ proyecto (business_id)│      │ propio), mismo código more-hub-web  │
+            └───────▲───────────▲───┘      └─────────────┬───────────────────────┘
+                    │           │                        │
+       sync offline │           │ lectura pública        │
+        (cola)      │           │ + reservas (RPC)       │
+         ┌──────────┴───┐   ┌───┴────────────────────────▼───┐
+         │ APP MORE HUB  │   │ WEB (more-hub-web)              │
+         │ (Expo)        │   │ landing con bloques (Puck)      │
+         │ gestión sin   │   │ tienda · servicios · reservar   │
+         │ internet      │   │ + EDITOR VISUAL /editor         │
+         └───────────────┘   └─────────────────────────────────┘
+```
 
-### Supabase Tenant (datos de los negocios)
-- Todas las tablas con `business_id` + índice + RLS desde la migración 001 (patrón 025/026 de More Hub).
-- Helper `app_business()` que saca el negocio de la sesión (claim en el token) y `with check` en todas
-  las escrituras.
-- `locations` (locales) y `location_id` en lo operativo: citas, caja, ventas, compras, stock, cierres;
-  personal asignado a locales.
-- `pages` (`draft` / `published` jsonb), `page_versions`, `site_theme`, `site_settings`.
-- Categorías, moneda, zona horaria, Telegram y crons **por negocio** (hoy están fijos en el código de MJ:
-  `America/Havana`, CUP, las 6 categorías).
-- Storage con rutas `business_id/...` y políticas por negocio.
-- Tests de aislamiento automáticos (negocio A no puede leer ni escribir nada de B) que el Master corre
-  al provisionar y al actualizar.
-
-### Seguridad
-Hoy MJ usa políticas `anon_all` y guarda la sesión del PIN en `localStorage`. Con varios negocios en un
-tenant eso permitiría que uno viera a otro, así que:
-1. **Supabase Auth real**: dueño/a con correo; empleadas con **PIN** como ahora, pero validado en una
-   Edge Function (PIN con hash + límite de intentos) que devuelve una sesión real.
-2. El token lleva `business_id`, rol y locales permitidos.
-3. Lo público (reservar, ver catálogo, reseñas) va por **funciones RPC** acotadas al negocio.
-
----
-
-## 4. Gestión: módulos, locales y personalización
-
-### Módulos (se encienden y apagan desde el Panel Master)
-| Módulo | Incluye |
-|---|---|
-| `servicios` | Servicios, categorías, agenda, reservas online, días cerrados, horarios |
-| `tienda` | Productos, catálogo público, ventas/POS, stock por local, compras |
-| `personal` | Empleados, PIN, horarios, pago por trabajador/a |
-| `clientes` | Fichas, historial, VIP |
-| `caja` | Cobros, métodos de pago, cierre del día |
-| `finanzas` | Ganancias, costos, desglose (sin IA) |
-| `insumos` | Materiales y costo real por servicio |
-| `resenas`, `galeria` | Reseñas y fotos antes/después |
-| `multi_local` | Selector de local, traspasos de stock, comparativa |
-| `telegram` | Avisos y resumen diario |
-| `tasa_cambio` | Precios duales USD/CUP con tasa automática |
-| `temporada` | Decoraciones (Navidad, San Valentín…) |
-| `ia_finanzas` | **Solo MJ** / extra de pago futuro |
-
-Solo tienda → no hay agenda ni botón "Reservar". Solo servicios → no hay tienda. Ambos → todo.
-Desactivar un módulo **oculta**, no borra datos.
-
-### Varios locales
-- Selector arriba: **Local A · Local B · Local C · Todos**.
-- Caja, ventas, citas, stock y finanzas se filtran por local; "Todos" consolida y muestra una
-  **comparativa** (ingresos, gastos, ganancia, más vendido, ticket medio).
-- Traspasos de stock entre locales y alertas de agotado por local.
-- Un encargado puede ver solo su local.
-- En la landing: bloque "Nuestras tiendas" (mapa y horario de cada una); la reserva permite elegir local.
-
-### Personalización del panel del cliente
-Logo, paleta generada desde el color de marca, fuentes, claro/oscuro, bordes, **vocabulario por rubro**
-("empleadas" / "barberos" / "vendedores") y **presets por rubro** (salón, barbería, spa, uñas, tienda)
-que crean categorías y datos de ejemplo al dar de alta.
+**Quién hace qué:**
+- **App (more-hub2)**: toda la gestión, sin internet. Lo que el negocio cambia en la app (precios,
+  productos, servicios, horarios, fotos, contacto, abrir/cerrar) aparece en la web en cuanto sincroniza,
+  porque los bloques de la landing leen esos datos en vivo.
+- **Web (more-hub-web)**: la landing que el negocio manda a sus clientes, con reservas y tienda. También
+  aloja el **editor visual** (diseño y estructura de la landing).
+- **Panel master (more-hub-admin)**: tú. Alta de clientes, módulos, despliegues, uso, cobros.
 
 ---
 
-## 4bis. App de gestión offline (Expo / React Native)
+## 3. Módulos
 
-En Cuba la conexión falla, así que la **gestión** también va como **app** (Android primero; también
-iOS y web desde el mismo código). La **landing** sigue siendo web (Next), porque es lo que el negocio
-manda a sus clientes.
+Se guardan como `entitlements` en el master (el mismo mecanismo que ya cobra Nube, Web y Equipos extra),
+y la app y la web se arman según lo activo. Desactivar **oculta**, no borra.
 
-### Cómo funciona
-1. El cliente abre la app y entra con su cuenta (correo y contraseña, o código de activación/QR que
-   le das tú). La app pregunta al **master** a qué tenant y negocio pertenece y si está activo.
-2. La app tiene **su propia base local (SQLite)** con los datos de su negocio. Todo funciona sin
-   internet: cobrar, agendar, vender, mover stock, cambiar precios, editar textos de la web.
-3. Cada cambio se guarda en local y entra en una **cola** (`pending_operations`).
-4. Cuando vuelve la conexión, la cola **se sube sola** al tenant y se bajan los cambios de los demás
-   (otros teléfonos, la web, reservas que hicieron los clientes en la landing).
-5. Lo publicado llega a la **landing** sin redeploy: el cliente cambia un precio sin conexión, y en
-   cuanto el teléfono tiene señal la web lo muestra.
-
-### No partimos de cero: es el motor de sync de More Hub
-Revisé `eduar297/more-hub2`: ya es una app **Expo 56 + SQLite + Drizzle, offline-first, probada en Cuba**,
-con todo lo difícil resuelto y con tests:
-- Cola `pending_operations` que sube el **estado final** de cada fila (upsert por id) en orden de
-  dependencias, y baja por `updated_at` con "gana la última escritura".
-- **Timeouts en toda llamada de red** ("en Cuba una request puede conectar y nunca responder").
-- **Reloj que no retrocede** (`relojQueNoRetrocede`): evita perder cambios cuando un teléfono tiene la
-  hora atrasada (el caso real de los 262.990 CUP de diferencia).
-- **Lo borrado no vuelve**, **la nube no retrocede**, **subida cortada** a medias, fotos que se suben
-  después, integridad al bajar.
-- **Sync P2P por WiFi local** entre teléfonos del mismo negocio sin internet.
-- Refresco en segundo plano, permisos por persona, cambio de negocio, avisos.
-
-Ese motor se saca a un paquete compartido (`packages/sync`) y lo usa la app de la plataforma.
-
-### Alternativas que miré (y por qué no)
-| Opción | Veredicto |
-|---|---|
-| **Motor propio de More Hub** (expo-sqlite + Drizzle + cola) | ✅ Ya probado en Cuba, sin servicios extra ni costos, control total |
-| PowerSync | El más "llave en mano" con Supabase, pero es un servicio más (de pago o autoalojado) entre el teléfono y la base: otra pieza que puede caerse con mala red |
-| Legend-State | Ligero y con soporte Supabase, pero la persistencia y los conflictos hay que montarlos aparte |
-| WatermelonDB | Maduro, pero con fricción en las versiones nuevas de Expo (nueva arquitectura) |
-
-### Qué queda en web y qué en la app
-| | Web (Next) | App (Expo) |
+| Módulo | Estado | Contenido |
 |---|---|---|
-| Landing pública | ✅ | — |
-| Reservas y tienda de los clientes finales | ✅ (online) | — |
-| Gestión (agenda, caja, ventas, stock, finanzas…) | ✅ online, para usar desde el ordenador | ✅ **offline** con cola |
-| Editar la landing | ✅ editor completo (Puck) | ✅ cambios sencillos (textos, fotos, precios, horario, abrir/cerrar), en cola |
-| Panel Master | ✅ (solo tú) | — |
+| `tienda` | ✅ existe (es More Hub hoy) | POS, inventario, compras, traslados, cierres, cajas, monedas, fiado, pedidos |
+| `puntos` (locales) | ✅ existe | Stock y caja por punto, filtro por punto o "Todos" |
+| `personal` | ✅ existe | Dependientes, claves, permisos, salarios |
+| `clientes`, `reportes`, `gastos` | ✅ existen | — |
+| `web` | ✅ existe → **se amplía** | Landing con bloques, editor, dominio propio |
+| `servicios` | 🆕 de MJ | Servicios, categorías, duración y precio (con rangos), fotos, quién hace qué |
+| `agenda` | 🆕 de MJ | Citas con varios servicios, disponibilidad, horario semanal por persona, ausencias, días cerrados, estados |
+| `reservas_online` | 🆕 de MJ | Reservar desde la landing, confirmar/cancelar desde la app, aviso al instante |
+| `resenas`, `galeria` | 🆕 de MJ | Reseñas moderadas, fotos antes/después |
+| `insumos_por_servicio` | 🆕 se apoya en las fichas de costo | Costo real de cada servicio |
+| `temporada` | 🆕 de MJ | Decoración de la web (Navidad, San Valentín…) |
+| `asistente` / `decision` (IA, Jev) | ✅ existe, de pago | Solo MJ y quien lo pague |
 
-La lógica de negocio (`packages/core`: disponibilidad, dinero, finanzas, tasa) y el tema
-(`packages/theme`) son los mismos en web y app, así que una regla se escribe una sola vez.
+**Combinaciones**: solo tienda (More Hub de hoy) · solo servicios (salón, barbería, spa, consultorio) ·
+servicios + tienda (MJ) · cualquiera con uno o varios puntos.
 
-### Distribución
-APK y actualizaciones por aire con EAS Update (como More Hub: el master sabe qué versión tiene cada
-teléfono), y Play Store/App Store cuando toque.
+**Cómo encaja una cita con lo que ya existe**: al completar una cita se **cobra como una venta** del
+punto (con sus servicios como renglones y los productos que se lleve), así entra sola en la caja, el
+cierre de turno, las monedas y los reportes de More Hub. No se duplica la caja de MJ.
 
 ---
 
-## 5. El kit de la landing
+## 4. La landing: kit de bloques + editor visual
+
+### Pieza elegida: Puck
+`@puckeditor/core` 0.24 (MIT, ~13k ⭐, React 19, Next): editor de arrastrar y soltar que usa **nuestros**
+componentes y guarda la página como JSON. La web lo pinta con `<Render>` en el servidor (SSR + ISR,
+como ya hace more-hub-web), así sigue siendo ligera para Cuba y sale bien la vista previa en WhatsApp.
+Descartados: Craft.js (más trabajo), GrapesJS (HTML suelto, sin datos vivos), Webstudio/Plasmic/Onlook
+(productos enteros), Builder.io (cerrado).
 
 ### Cómo se logra que ninguna sea igual
-Landing = **bloques** × **variante** × **tema** × **orden** × **contenido**. Con ~20 bloques de 3–5
-variantes y temas libres salen miles de combinaciones. Si un cliente quiere algo único, se crea un
-bloque nuevo en el kit y queda disponible para todos.
+Landing = **bloques** × **variante** × **tema** × **orden** × **contenido**. ~20 bloques con 3–5
+variantes y temas libres. Si un cliente quiere algo único, se crea un bloque nuevo y queda para todos.
 
-### Bloques iniciales
-- **Navegación**: clásica, centrada, transparente sobre la portada, menú lateral.
-- **Portada (hero)**: centrada, dividida foto/texto, collage, video de fondo, editorial, carrusel.
-- **Servicios** *(datos vivos)*: tarjetas por categoría, lista con precios, acordeón, carta.
-- **Tienda** *(datos vivos)*: grid, carrusel, más vendidos, por categoría.
-- **Galería**: masonry, antes/después, carrusel.
-- **Equipo** *(datos vivos)*, **Reseñas** *(datos vivos)*, **Locales** *(datos vivos)*.
-- **Sobre nosotros**, **Reservar/CTA**, **Contacto**, **Promo** (oferta, cuenta regresiva),
-  **Preguntas frecuentes**, **Precios/Paquetes**, **Instagram**, **Texto libre**, **Imagen**,
-  **Columnas** (bloques dentro de bloques), **Espaciador**, **Pie de página**, **Temporada**.
+**Bloques**: Navegación · Portada (centrada, dividida, collage, video, editorial, carrusel) ·
+Catálogo de tienda *(vivo; se reutiliza el `Storefront` actual)* · Servicios *(vivo)* · Reservar
+*(vivo)* · Equipo *(vivo)* · Puntos/Locales con mapa y horario *(vivo)* · Reseñas *(vivo)* · Galería y
+antes/después *(vivo)* · Sobre nosotros · Promo/cuenta regresiva · Preguntas frecuentes · Precios y
+paquetes · Contacto · Texto · Imagen · Columnas (bloques dentro de bloques) · Espaciador · Pie ·
+Temporada.
 
-Los bloques con datos vivos leen de la base: si el cliente cambia un precio, la landing se actualiza sola.
+**Campo "Enlace"**: ir a sección · página interna · abrir reserva · WhatsApp con mensaje · llamar ·
+correo · URL externa · producto o servicio concreto.
 
-### Edición con clics
-Texto, texto enriquecido, imagen (subida + recorte, ya existe `PhotoCropEditor`), color, alineación,
-fondo (color/degradado/imagen/video), espaciado, animación, visible en móvil/escritorio, y el campo
-**Enlace**: `Ir a sección` · `Página interna` · `Abrir reserva` · `WhatsApp` (mensaje prellenado) ·
-`Llamar` · `Correo` · `URL externa` · `Producto/Servicio concreto`.
+**Motor de temas**: paleta generada en OKLCH desde 1–2 colores de marca (con contraste medido, como ya
+hace `theme.test.ts` en la app), pares de fuentes curados y auto-alojados (como ya hace more-hub-web),
+bordes, sombras, densidad, estilo de botones e imágenes. Presets: *Rosa* (MJ), *Noir lujo*, *Minimal
+editorial*, *Orgánico spa*, *Urbano barbería*, *Pastel*, *Bodega moderna*, *Teal More Hub*…
 
-### Motor de temas
-Colores generados en OKLCH desde 1–2 colores de marca (con contraste verificado), pares de fuentes
-curados, bordes, sombras, densidad, estilo de botones y de imágenes. **Presets**: *Rosa* (MJ actual),
-*Noir lujo*, *Minimal editorial*, *Orgánico spa*, *Urbano barbería*, *Pastel*, *Tienda moderna*…
+**Páginas**: varias por negocio, borrador y publicada, historial, duplicar, guardar como plantilla.
 
-### Páginas
-Varias por negocio (Inicio, Servicios, Tienda, Galería, Nosotros…). Borrador vs publicada, historial de
-versiones, duplicar página o plantilla.
-
-### Quién edita qué
-- **Tú, en el Panel Master**: editor completo de cualquier negocio.
-- **El cliente, en su panel ("Mi página")**: el mismo editor con **permisos limitados** (Puck permite
-  bloquear arrastrar/borrar/editar por bloque): textos y fotos sí, estructura no. Configurable por cliente.
-
----
-
-## 6. Despliegue: un proyecto Vercel por cliente, controlado desde el panel
-
-### Pool de cuentas Vercel
-- Registras en el Master varias cuentas Vercel (token cifrado AES-256-GCM, team id).
-- Cada cuenta aloja **varios proyectos** (uno por cliente). El panel muestra cuántos lleva cada una
-  y propone la que tenga hueco, igual que con los tenants de Supabase.
-
-### Acciones desde el panel (vía API de Vercel / `@vercel/sdk`)
-| Botón | Qué hace |
-|---|---|
-| **Crear sitio** | Crea el proyecto en la cuenta elegida, le pone las variables (tenant, `BUSINESS_ID`, master) |
-| **Desplegar** | Lanza el build y el deploy de la versión actual del código |
-| **Dominio** | Añade el dominio del cliente, muestra los registros DNS a poner y verifica |
-| **Pausar / Reanudar** | Marca el negocio `paused` en el master → la web muestra "temporalmente fuera de servicio" y el panel se bloquea; opcionalmente pausa también el proyecto en Vercel |
-| **Suspender** | Igual que pausar, pero por impago/licencia vencida (automático al vencer) |
-| **Actualizar todos** | Despliega la nueva versión del código a todos los sitios (o a los marcados), con informe paso a paso como el de "Actualizar todos" de More Hub |
-| **Eliminar** | Borra el proyecto en Vercel, con confirmación ("zona de peligro") |
-
-### Cómo se construye
-Un **GitHub Action** (disparado desde el panel con `workflow_dispatch`) hace el build una vez y
-despliega con `vercel deploy --prebuilt --prod` al proyecto de cada cliente con el token de su cuenta.
-Así no hace falta conectar tu repo de GitHub a cada cuenta de Vercel. Los tokens se piden al master con
-una clave del Action y nunca quedan en los logs.
-
-### Condiciones y costos a tener en cuenta
-- El plan **Hobby de Vercel es solo para uso personal no comercial**; un sitio de negocio que cobra es
-  comercial. Con Hobby, Vercel puede pausar proyectos. La forma segura es **Vercel Pro (20 USD/mes por
-  cuenta)**, que admite muchos proyectos, así que el pool puede ser pocas cuentas Pro con muchos
-  clientes cada una.
-- Supabase gratis: 2 proyectos activos por cuenta, 500 MB de base, 1 GB de archivos, se pausa tras 7
-  días sin actividad. Con varios negocios por tenant (como hace More Hub) un Supabase **Pro (~25 USD/mes)**
-  aguanta muchos clientes.
-
----
-
-## 7. Panel Master: todo lo que puedes hacer
-
-**Negocios**
-- Asistente "Nuevo negocio": nombre, contacto, rubro (preset), módulos, locales, moneda, zona horaria,
-  tenant (con hueco), cuenta Vercel (con hueco), plantilla del catálogo.
-- Ficha del negocio: estado, licencia/vencimiento, módulos, sitio y dominio, usuarios, logs, errores,
-  versión, datos (ver tablas como en More Hub), zona de peligro.
-- Activar / pausar / suspender / reactivar / borrar.
-- Usuarios: crear dueño/a, invitar, resetear PIN, invitación de soporte para entrar a ayudar.
-
-**Landing**
-- Catálogo de plantillas con capturas automáticas (Playwright) y "ver demo".
-- Editor completo, vista previa compartible por WhatsApp (link con token, sin publicar), publicar,
-  versiones, copiar la landing de un negocio como nueva plantilla.
-
-**Infraestructura**
-- Tenants Supabase: provisionar, actualizar esquema (uno o todos), ocupación (`max_businesses`),
-  tests de aislamiento.
-- Cuentas Vercel: alta, proyectos por cuenta, sitios caídos o desactualizados.
-
-**Uso: qué uso le están dando**
-- Por negocio: último acceso al panel, usuarios activos, citas/ventas/cobros de los últimos 7 y 30 días,
-  productos y servicios activos, locales, almacenamiento usado, visitas a la landing y reservas que
-  llegaron desde ella, versión desplegada, errores.
-- Un job diario del master recoge las cifras de cada tenant (con su service_role) a `usage_daily`; las
-  visitas las cuenta la propia web con un endpoint ligero (sin cookies) o Vercel Web Analytics.
-- Avisos: negocios sin actividad en X días (riesgo de baja), sitios con errores, licencias por vencer.
-
-**Cobros** (lo de More Hub): precios por módulo y periodo, pagos, MRR, vencimientos, adopción de módulos.
-
----
-
-## 8. Fases
-
-| Fase | Qué sale | Resultado |
+### Dónde se edita
+| Quién | Dónde | Qué |
 |---|---|---|
-| **0. Cimientos** | Repo de la app (monorepo, Next + TS, Tailwind v4, shadcn), skills instaladas, decisión sobre el Master | Proyecto que compila y despliega |
-| **1. Esquema tenant** | Migraciones con `business_id` + RLS + `locations` + `pages`, login PIN seguro, RPC públicas, storage por negocio, tests de aislamiento | Dos negocios en un tenant sin verse |
-| **2. Master** | Tablas nuevas del master, provisionar tenants, alta de negocio, módulos, estados, cuentas Vercel | Crear un negocio desde el panel |
-| **3. Motor de temas** | Tokens, paletas, fuentes, presets | Cambias color/fuente y cambia todo |
-| **4. Gestión por módulos** | Agenda, caja, clientes, servicios, tienda, stock por local, finanzas por local/todos, personal, reseñas, Telegram | Panel que se arma según módulos y locales |
-| **5. Kit de landing** | Puck + bloques + variantes + Enlace + datos vivos + páginas + borrador/publicar/versiones + permisos | Landing 100 % editable |
-| **6. Despliegue** | Crear sitio, desplegar, dominio, pausar, actualizar todos | Botón "Publicar cliente" |
-| **7. Uso y cobros** | Métricas diarias, avisos, dashboard | Ves qué uso le dan |
-| **7bis. App offline** | `packages/sync` desde More Hub, app Expo con los módulos, edición sencilla de la web en cola, P2P, EAS Update | Gestión sin internet |
-| **8. Catálogo** | 6+ plantillas muy distintas con capturas automáticas | Algo que enseñar al primer cliente |
-| **9. MJ Beauty como cliente nº 1** | Migrar datos de MJ con su `business_id`, recrear su landing como plantilla "Rosa", Jev solo para MJ | MJ en la plataforma; se apaga la app vieja |
-| Después | IA como extra de pago, más rubros, más idiomas | — |
+| Tú | `more-hub-web/editor/<negocio>` (botón "Editar landing" en el panel) | Todo |
+| El cliente | La app (sin internet, en cola) | Contenido vivo: productos, servicios, precios, horarios, fotos, contacto, publicar/ocultar |
+| El cliente (opcional, por negocio) | El mismo editor web con permisos limitados | Textos e imágenes de los bloques, sin tocar estructura |
 
-La app actual de MJ **no se toca** hasta la fase 9.
+**Cómo guarda el editor sin exponer secretos**: el editor entra con tu usuario del master; guarda por
+una Edge Function nueva del master (`site-save`) que comprueba que eres admin, descifra la service_role
+del tenant y escribe el JSON. Así los bloques viven en un solo repo (la web) y los secretos no salen
+del master.
+
+**Dónde vive la página**: tabla nueva del tenant `website_pages` (`business_id`, ruta, `draft`,
+`published`, versión), lectura pública solo de lo publicado. Las plantillas del catálogo viven en el
+master (`site_templates`).
+
+### Flujo "en un día"
+1. Panel → **Nuevo negocio** (rubro, módulos, puntos, moneda, tenant con hueco).
+2. **Catálogo de plantillas** (capturas automáticas con Playwright + "ver demo") → elige una.
+3. **Editar landing** → "¿te gusta así? → cámbiale esto".
+4. **Link de vista previa** (sin publicar) por WhatsApp.
+5. Aprueba → **Publicar** → **Crear sitio** en Vercel con su dominio → código de activación para la app.
 
 ---
 
-## 9. Investigación: referencias, librerías y skills
+## 5. Despliegue: un proyecto Vercel por cliente, desde el panel
 
-### Productos parecidos
-- **GoHighLevel "Snapshots"**: agencias clonan una cuenta maestra (web + CRM + calendario) para cada
-  cliente y revenden a 97–297 USD/mes. Copiamos "plantilla maestra → copia por cliente"; evitamos su
-  problema de que actualizar la maestra pisa lo del cliente (aquí el código de los bloques se actualiza
-  para todos y el contenido es de cada cliente).
-- **GlossGenius / Vagaro**: webs con plantillas de belleza y reserva por servicio o por empleada; poco
-  personalizables, que es justo nuestra ventaja.
-- **Webflow / Framer**: catálogos de plantillas con "ver demo".
+- **Pool de cuentas Vercel** en el master (token cifrado con la misma AES-256-GCM, team id, nº de
+  proyectos), igual que el pool de tenants Supabase.
+- Cada cliente = **un proyecto** del mismo repo `more-hub-web` con la variable `BUSINESS_ID` y su
+  dominio. La web resuelve el negocio así: `BUSINESS_ID` fijo → dominio → ruta `/<business_id>` (la de
+  hoy, que se mantiene para `web.morehub.app/<id>`).
+- **Botones del panel** (API de Vercel / `@vercel/sdk`): Crear sitio · Desplegar · Dominio (con los DNS
+  a poner y la verificación) · Pausar/Reanudar · **Actualizar todos** (informe paso a paso, como el de
+  tenants) · Eliminar.
+- **Build**: un GitHub Action disparado desde el panel construye una vez y hace
+  `vercel deploy --prebuilt --prod` a cada proyecto con el token de su cuenta. No hace falta conectar el
+  repo a cada cuenta de Vercel.
+- **Pausar/suspender** es primero un estado del master (la web muestra "temporalmente fuera de servicio"
+  y la app avisa, como ya pasa con las licencias); pausar el proyecto en Vercel es opcional.
+- **Editar la landing no requiere redeploy**: se revalida la página al publicar.
 
-### Constructores visuales evaluados
-| Opción | Veredicto |
+**Costos/condiciones**: el plan Hobby de Vercel es solo no comercial; lo seguro son pocas cuentas
+**Pro (20 USD/mes)** con muchos proyectos cada una. En Supabase, varios negocios por tenant Pro
+(~25 USD/mes) como ya hace More Hub.
+
+---
+
+## 6. Uso: qué hace cada cliente
+
+Hoy el master ya sabe versión de la app y última vez visto (master 018). Se añade:
+- `usage_daily` en el master: por negocio y día, citas, reservas online, ventas, importe, productos y
+  servicios activos, personas activas, fotos/almacenamiento, visitas a la web y reservas que vinieron
+  de ella. La recoge un job diario con la service_role de cada tenant; las visitas las cuenta la web con
+  un endpoint ligero sin cookies.
+- En el panel: ficha de uso por negocio, ranking, **avisos** de negocios sin actividad (riesgo de baja),
+  sitios con errores y licencias por vencer (esto último ya existe).
+
+---
+
+## 7. Fases
+
+| # | Repo | Qué | Hecho cuando |
+|---|---|---|---|
+| 0 | todos | Ramas, skills de diseño instaladas, este plan movido a `more-hub2/docs/PLAN-SERVICIOS-Y-WEB.md` | — |
+| 1 | more-hub2 (`supabase/tenant`) | Migraciones del módulo servicios: `services`, `service_categories`, `service_staff`, `appointments`, `appointment_services`, `staff_hours`, `staff_time_off`, `closed_days`, `reviews`, `gallery_photos`, `website_pages`; todo con `business_id`, `punto_id` donde toque, RLS, RPC públicas de reserva y disponibilidad; tests de esquema; vendorear al panel | Un tenant de prueba con dos negocios aislados y una reserva hecha por RPC |
+| 2 | more-hub-admin + master | `entitlements` de los módulos nuevos, interruptores por negocio, presets por rubro (salón, barbería, spa, uñas, tienda) | Activas "servicios" a un negocio desde el panel |
+| 3 | more-hub2 (app) | Pantallas: Servicios, Agenda (día/semana, por persona), Reservas pendientes, horario por persona, cobrar la cita como venta; lógica portada de MJ con tests; tablas en la cola de sync | Un salón trabaja todo el día sin internet |
+| 4 | more-hub-web | Puck como renderizador, kit de bloques, motor de temas, formulario de reserva, resolución por `BUSINESS_ID`/dominio, OG por negocio | La landing de MJ recreada con bloques |
+| 5 | more-hub-web + master | Editor `/editor`, Edge Function `site-save`, borrador/publicar/versiones, link de vista previa, catálogo de plantillas | Cambias una landing con clics y la publicas |
+| 6 | more-hub-admin | Cuentas Vercel, sitios, dominios, desplegar/pausar/actualizar todos, GitHub Action | "Publicar cliente" con un botón |
+| 7 | more-hub-admin + master | `usage_daily`, ficha de uso, avisos | Ves qué uso le da cada uno |
+| 8 | more-hub-web | 6–8 plantillas muy distintas con capturas automáticas | Catálogo para enseñar |
+| 9 | todos | **MJ como piloto**: script que copia sus datos al tenant con su `business_id`, landing "Rosa", Jev por su entitlement, la app vieja se apaga | MJ funciona en More Hub |
+
+La app actual de MJ **no se toca** hasta la fase 9 y sigue funcionando mientras tanto.
+
+---
+
+## 8. Lo que se porta de MJ (y cómo)
+
+| De MJ | A More Hub |
 |---|---|
-| **Puck** (`@puckeditor/core` 0.24, MIT, ~13k ⭐, React 18/19) | ✅ Elegido: usa nuestros componentes, guarda JSON, slots, campos propios, permisos por bloque, `<Render>` para producción |
-| Craft.js | Más bajo nivel, más trabajo |
-| GrapesJS | HTML/CSS sueltos, no componentes React con datos vivos |
-| Webstudio / Plasmic / Onlook | Productos enteros, demasiado para incrustar |
-| Builder.io | Cerrado y de pago |
-
-### Librerías
-Puck (editor) · Motion (animaciones) · shadcn/ui + Tailwind v4 (panel y temas por variables CSS) ·
-`culori` (paletas OKLCH) · Magic UI, Aceternity UI, React Bits (efectos de landing, copiar y pegar) ·
-TanStack Query · react-hook-form + zod · sonner · Recharts · dnd-kit (ya lo usas) · `@vercel/sdk` ·
-pnpm + Turborepo · Playwright (capturas del catálogo).
-
-### Skills
-Disponibles ya: `vercel:shadcn`, `vercel:nextjs`, `vercel:react-best-practices`, `design:design-system`,
-`design:accessibility-review`, `anthropic-skills:theme-factory`, `engineering:system-design`.
-
-Para instalar en el repo (`.claude/skills/`):
-1. **`frontend-design`** (oficial de Anthropic): dirección estética fuerte, nada de "diseño genérico de IA".
-2. **`design-taste-frontend`** (leonxlnx/taste-skill): pensada para que cada landing tenga personalidad.
-3. **`ui-ux-pro-max`** (nextlevelbuilder): paletas, pares de fuentes y estilos para los presets.
-4. **awesome-claude-design**: 68 `DESIGN.md` de marcas reales como referencia.
+| `lib/availability.js`, `duration.js`, `dates.js` | `src/domain/agenda/*` (TS, con tests), compartido con la web para la reserva |
+| `PublicBookingForm.jsx` | Bloque "Reservar" de la web, contra RPC pública |
+| `Agenda.jsx`, `Servicios.jsx`, `Empleadas.jsx` (horarios) | Pantallas nuevas de la app (React Native) |
+| `Caja.jsx` (cobro multi-servicio) | Cobrar la cita como venta del punto (sin caja paralela) |
+| `StaffPay.jsx` (pago por trabajadora) | Se apoya en `salarios` + comisión por servicio (More Hub ya tiene la comisión en su lista pendiente) |
+| `Inventario.jsx` + `service_supplies` | Fichas de costo/recetas existentes, aplicadas a servicios |
+| `Resenas.jsx`, `Galeria.jsx`, `PhotoCropEditor.jsx` | Bloques de la web + moderación en la app |
+| `Season.jsx` | Bloque/capa "Temporada" |
+| Telegram (`tg_*` en SQL) | Los avisos al instante de More Hub (`avisar`) con tipos nuevos: reserva nueva, cancelada, reseña |
+| Tasa automática (tasalo) | More Hub decidió tasa **manual** a propósito; para MJ se ofrece como opción del negocio |
+| Landing de MJ | Plantilla "Rosa" del catálogo |
+| Jev en Finanzas | Entitlement `decision`/`asistente` de MJ |
 
 ---
 
-## 10. Decisiones pendientes
+## 9. Investigación (resumen)
 
-0. **¿Gestión nueva o More Hub ampliado?** More Hub ya es offline, multi-punto, multi-negocio, con
-   tienda, caja, inventario, monedas, cierres y web pública. Lo que le falta para esta plataforma es
-   sobre todo **servicios/agenda/reservas** (lo fuerte de MJ) y el **constructor de landings**.
-   Opción A: la gestión de la plataforma **es More Hub** con módulos nuevos (servicios, agenda,
-   reservas, landing con Puck), y así no mantienes dos sistemas parecidos. Opción B: app nueva que
-   solo reutiliza el motor de sync de More Hub. Mi recomendación es la **A**, salvo que quieras que
-   sean productos totalmente separados.
-1. **Panel Master**: ¿extender `more-hub-admin` (mismo panel y mismo Supabase master, con un segundo
-   producto) o un panel nuevo copiando sus piezas?
-2. **Next.js** para la app del cliente (recomendado).
-3. **Repo nuevo** para la app del cliente: créalo vacío en GitHub y lo conecto.
-4. **Skills**: ¿instalo las de la sección 9?
-5. **Nombre** de la plataforma.
+**Referencias de producto**: GoHighLevel "Snapshots" (cuenta maestra que se clona por cliente; revenden
+a 97–297 USD/mes; su fallo, que actualizar la maestra pisa lo del cliente, lo evitamos separando código
+de contenido) · GlossGenius y Vagaro (webs de belleza con reserva por servicio o por persona, poco
+personalizables) · Webflow/Framer (catálogos con "ver demo") · Square, Loyverse, Shopify POS y Odoo
+(ya estudiados en el plan maestro de More Hub para cajas y puntos).
+
+**Librerías**: Puck (editor) · Motion (animaciones) · `culori` (paletas OKLCH) · Magic UI, Aceternity UI
+y React Bits (efectos de landing, copiar y pegar) · `@vercel/sdk` · Playwright (capturas). Para la app,
+se queda lo que ya usa More Hub (Expo 56, Drizzle, Paper, Reanimated, gifted-charts).
+
+**Sync offline** (comparado): el motor propio de More Hub gana a PowerSync (servicio extra entre el
+teléfono y la base, otra pieza que falla con mala red), Legend-State (persistencia y conflictos aparte)
+y WatermelonDB (fricción con la nueva arquitectura de Expo).
+
+**Skills para mí**: ya disponibles `vercel:nextjs`, `vercel:shadcn`, `vercel:react-best-practices`,
+`design:design-system`, `design:accessibility-review`, `anthropic-skills:theme-factory`, y las de Expo
+(`expo:expo-design-system`, `expo:expo-native-ui`, `expo:expo-animation`, `expo:expo-router`,
+`expo:eas-update`, `react-native-best-practices`). A instalar en `more-hub-web/.claude/skills`:
+`frontend-design` (Anthropic), `design-taste-frontend` (taste-skill) y `ui-ux-pro-max`, para que cada
+plantilla tenga personalidad propia.
 
 ---
 
-## Fuentes
-- More Hub Admin (`eduar297/more-hub-admin`): README, `src/lib/provisioning/*`, migraciones master
-  004/010/011/018 y tenant 025/026.
-- Puck: https://github.com/puckeditor/puck · npm `@puckeditor/core`
-- Supabase custom claims y RBAC: https://supabase.com/docs/guides/auth/auth-hooks/custom-access-token-hook ·
-  https://supabase.com/docs/guides/api/custom-claims-and-role-based-access-control-rbac
-- Vercel Hobby no comercial: https://vercel.com/docs/limits/fair-use-guidelines · https://vercel.com/docs/plans/hobby
-- Vercel Pro: https://vercel.com/docs/plans/pro-plan
-- API de Vercel: https://vercel.com/docs/rest-api/projects/create-a-new-project ·
+## 10. Fuentes
+- Repos analizados: `eduar297/mj-beauty-app`, `eduar297/more-hub2` (docs/PLAN-MAESTRO.md,
+  ANALISIS-VARIOS-NEGOCIOS.md, ESTADO-2026-09-22.md, DESIGN.md, `src/sync/*`, `src/db/*`),
+  `eduar297/more-hub-admin` (README, `src/lib/provisioning/*`, migraciones master 004/010/011/018),
+  `eduar297/more-hub-web` (README, `src/lib/site.ts`).
+- Puck: https://github.com/puckeditor/puck
+- Vercel: https://vercel.com/docs/limits/fair-use-guidelines · https://vercel.com/docs/plans/pro-plan ·
+  https://vercel.com/docs/rest-api/projects/create-a-new-project ·
   https://vercel.com/docs/rest-api/projects/create-one-or-more-environment-variables ·
-  https://vercel.com/docs/rest-api/sdk/examples/deployments-automation
-- Dominios por API: https://vercel.com/docs/platforms/multi-tenant-platforms/configuring-domains
-- GitHub Actions + Vercel: https://vercel.com/kb/guide/how-can-i-use-github-actions-with-vercel
-- Límites Supabase gratis: https://automationatlas.io/answers/supabase-free-tier-limits-2026/
-- GoHighLevel Snapshots: https://ecosire.com/blog/gohighlevel-snapshots-guide
-- Software de salones: https://glossgenius.com/blog/website-builder-for-salons · https://glossgenius.com/blog/fresha-vs-vagaro
-- Librerías de landing: https://www.pkgpulse.com/guides/react-bits-vs-aceternity-magic-ui-2026
-- Temas OKLCH: https://tweakcn-picker.vercel.app/docs/theming
-- Skills: https://skills.sh/anthropics/claude-code/frontend-design ·
-  https://claudemarketplaces.com/skills/leonxlnx/taste-skill/design-taste-frontend ·
-  https://claudemarketplaces.com/skills/nextlevelbuilder/ui-ux-pro-max-skill/ui-ux-pro-max ·
-  https://composio.dev/content/top-design-skills
-- App offline de More Hub (`eduar297/more-hub2`): `src/sync/worker.ts`, `src/sync/queue.ts`,
-  `src/db/relojQueNoRetrocede.ts` y los tests de `src/sync/`.
-- Sync offline en Expo: https://docs.expo.dev/guides/local-first/ ·
+  https://vercel.com/docs/rest-api/sdk/examples/deployments-automation ·
+  https://vercel.com/docs/platforms/multi-tenant-platforms/configuring-domains ·
+  https://vercel.com/kb/guide/how-can-i-use-github-actions-with-vercel
+- Supabase: https://supabase.com/docs/guides/auth/auth-hooks/custom-access-token-hook ·
+  https://automationatlas.io/answers/supabase-free-tier-limits-2026/
+- Sync offline: https://docs.expo.dev/guides/local-first/ ·
   https://expo.dev/blog/offline-first-apps-with-expo-and-legend-state ·
   https://supabase.com/blog/react-native-offline-first-watermelon-db · https://powersync.com/
+- Referencias: https://ecosire.com/blog/gohighlevel-snapshots-guide ·
+  https://glossgenius.com/blog/website-builder-for-salons · https://glossgenius.com/blog/fresha-vs-vagaro ·
+  https://www.pkgpulse.com/guides/react-bits-vs-aceternity-magic-ui-2026
+- Skills: https://skills.sh/anthropics/claude-code/frontend-design ·
+  https://claudemarketplaces.com/skills/leonxlnx/taste-skill/design-taste-frontend ·
+  https://claudemarketplaces.com/skills/nextlevelbuilder/ui-ux-pro-max-skill/ui-ux-pro-max
