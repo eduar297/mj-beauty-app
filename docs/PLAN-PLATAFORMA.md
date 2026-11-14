@@ -19,6 +19,7 @@
 | Gestión "un poco" personalizable | Paleta/logo/fuentes + módulos que se encienden y apagan + vocabulario por rubro |
 | Solo tienda / solo servicios / ambos | Módulos por negocio; menú, panel y landing se adaptan solos |
 | Varios locales, finanzas por local o juntas | `locations` (equivalente a los "puntos" de More Hub): caja, stock, ventas, citas y finanzas por local o "Todos" |
+| Mala conexión en Cuba | **App de gestión offline (Expo)** con base local y cola de cambios que se sube sola al volver la señal; reutiliza el motor de sync de More Hub |
 | IA (Jev) | **Fuera** para clientes. Solo MJ. Más adelante, posible extra de pago |
 
 ---
@@ -88,7 +89,9 @@ falló a medias.
 ```
 apps/
   web/        Landing pública + panel de gestión (un mismo código para todos los clientes)
+  app/        App de gestión Expo (Android/iOS/web), offline con cola
 packages/
+  sync/       Motor de sincronización offline (sacado de More Hub)
   blocks/     EL KIT: bloques de la landing + config de Puck
   theme/      Tokens, generador de paletas (OKLCH), fuentes, presets
   ui/         Componentes del panel (shadcn) que leen el tema
@@ -177,6 +180,64 @@ Desactivar un módulo **oculta**, no borra datos.
 Logo, paleta generada desde el color de marca, fuentes, claro/oscuro, bordes, **vocabulario por rubro**
 ("empleadas" / "barberos" / "vendedores") y **presets por rubro** (salón, barbería, spa, uñas, tienda)
 que crean categorías y datos de ejemplo al dar de alta.
+
+---
+
+## 4bis. App de gestión offline (Expo / React Native)
+
+En Cuba la conexión falla, así que la **gestión** también va como **app** (Android primero; también
+iOS y web desde el mismo código). La **landing** sigue siendo web (Next), porque es lo que el negocio
+manda a sus clientes.
+
+### Cómo funciona
+1. El cliente abre la app y entra con su cuenta (correo y contraseña, o código de activación/QR que
+   le das tú). La app pregunta al **master** a qué tenant y negocio pertenece y si está activo.
+2. La app tiene **su propia base local (SQLite)** con los datos de su negocio. Todo funciona sin
+   internet: cobrar, agendar, vender, mover stock, cambiar precios, editar textos de la web.
+3. Cada cambio se guarda en local y entra en una **cola** (`pending_operations`).
+4. Cuando vuelve la conexión, la cola **se sube sola** al tenant y se bajan los cambios de los demás
+   (otros teléfonos, la web, reservas que hicieron los clientes en la landing).
+5. Lo publicado llega a la **landing** sin redeploy: el cliente cambia un precio sin conexión, y en
+   cuanto el teléfono tiene señal la web lo muestra.
+
+### No partimos de cero: es el motor de sync de More Hub
+Revisé `eduar297/more-hub2`: ya es una app **Expo 56 + SQLite + Drizzle, offline-first, probada en Cuba**,
+con todo lo difícil resuelto y con tests:
+- Cola `pending_operations` que sube el **estado final** de cada fila (upsert por id) en orden de
+  dependencias, y baja por `updated_at` con "gana la última escritura".
+- **Timeouts en toda llamada de red** ("en Cuba una request puede conectar y nunca responder").
+- **Reloj que no retrocede** (`relojQueNoRetrocede`): evita perder cambios cuando un teléfono tiene la
+  hora atrasada (el caso real de los 262.990 CUP de diferencia).
+- **Lo borrado no vuelve**, **la nube no retrocede**, **subida cortada** a medias, fotos que se suben
+  después, integridad al bajar.
+- **Sync P2P por WiFi local** entre teléfonos del mismo negocio sin internet.
+- Refresco en segundo plano, permisos por persona, cambio de negocio, avisos.
+
+Ese motor se saca a un paquete compartido (`packages/sync`) y lo usa la app de la plataforma.
+
+### Alternativas que miré (y por qué no)
+| Opción | Veredicto |
+|---|---|
+| **Motor propio de More Hub** (expo-sqlite + Drizzle + cola) | ✅ Ya probado en Cuba, sin servicios extra ni costos, control total |
+| PowerSync | El más "llave en mano" con Supabase, pero es un servicio más (de pago o autoalojado) entre el teléfono y la base: otra pieza que puede caerse con mala red |
+| Legend-State | Ligero y con soporte Supabase, pero la persistencia y los conflictos hay que montarlos aparte |
+| WatermelonDB | Maduro, pero con fricción en las versiones nuevas de Expo (nueva arquitectura) |
+
+### Qué queda en web y qué en la app
+| | Web (Next) | App (Expo) |
+|---|---|---|
+| Landing pública | ✅ | — |
+| Reservas y tienda de los clientes finales | ✅ (online) | — |
+| Gestión (agenda, caja, ventas, stock, finanzas…) | ✅ online, para usar desde el ordenador | ✅ **offline** con cola |
+| Editar la landing | ✅ editor completo (Puck) | ✅ cambios sencillos (textos, fotos, precios, horario, abrir/cerrar), en cola |
+| Panel Master | ✅ (solo tú) | — |
+
+La lógica de negocio (`packages/core`: disponibilidad, dinero, finanzas, tasa) y el tema
+(`packages/theme`) son los mismos en web y app, así que una regla se escribe una sola vez.
+
+### Distribución
+APK y actualizaciones por aire con EAS Update (como More Hub: el master sabe qué versión tiene cada
+teléfono), y Play Store/App Store cuando toque.
 
 ---
 
@@ -301,6 +362,7 @@ una clave del Action y nunca quedan en los logs.
 | **5. Kit de landing** | Puck + bloques + variantes + Enlace + datos vivos + páginas + borrador/publicar/versiones + permisos | Landing 100 % editable |
 | **6. Despliegue** | Crear sitio, desplegar, dominio, pausar, actualizar todos | Botón "Publicar cliente" |
 | **7. Uso y cobros** | Métricas diarias, avisos, dashboard | Ves qué uso le dan |
+| **7bis. App offline** | `packages/sync` desde More Hub, app Expo con los módulos, edición sencilla de la web en cola, P2P, EAS Update | Gestión sin internet |
 | **8. Catálogo** | 6+ plantillas muy distintas con capturas automáticas | Algo que enseñar al primer cliente |
 | **9. MJ Beauty como cliente nº 1** | Migrar datos de MJ con su `business_id`, recrear su landing como plantilla "Rosa", Jev solo para MJ | MJ en la plataforma; se apaga la app vieja |
 | Después | IA como extra de pago, más rubros, más idiomas | — |
@@ -349,6 +411,13 @@ Para instalar en el repo (`.claude/skills/`):
 
 ## 10. Decisiones pendientes
 
+0. **¿Gestión nueva o More Hub ampliado?** More Hub ya es offline, multi-punto, multi-negocio, con
+   tienda, caja, inventario, monedas, cierres y web pública. Lo que le falta para esta plataforma es
+   sobre todo **servicios/agenda/reservas** (lo fuerte de MJ) y el **constructor de landings**.
+   Opción A: la gestión de la plataforma **es More Hub** con módulos nuevos (servicios, agenda,
+   reservas, landing con Puck), y así no mantienes dos sistemas parecidos. Opción B: app nueva que
+   solo reutiliza el motor de sync de More Hub. Mi recomendación es la **A**, salvo que quieras que
+   sean productos totalmente separados.
 1. **Panel Master**: ¿extender `more-hub-admin` (mismo panel y mismo Supabase master, con un segundo
    producto) o un panel nuevo copiando sus piezas?
 2. **Next.js** para la app del cliente (recomendado).
@@ -380,3 +449,8 @@ Para instalar en el repo (`.claude/skills/`):
   https://claudemarketplaces.com/skills/leonxlnx/taste-skill/design-taste-frontend ·
   https://claudemarketplaces.com/skills/nextlevelbuilder/ui-ux-pro-max-skill/ui-ux-pro-max ·
   https://composio.dev/content/top-design-skills
+- App offline de More Hub (`eduar297/more-hub2`): `src/sync/worker.ts`, `src/sync/queue.ts`,
+  `src/db/relojQueNoRetrocede.ts` y los tests de `src/sync/`.
+- Sync offline en Expo: https://docs.expo.dev/guides/local-first/ ·
+  https://expo.dev/blog/offline-first-apps-with-expo-and-legend-state ·
+  https://supabase.com/blog/react-native-offline-first-watermelon-db · https://powersync.com/
