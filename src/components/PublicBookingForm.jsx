@@ -335,11 +335,14 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
           </Field>
 
           {selectedIds.length > 0 && (
-            <div className="-mt-2 mb-3 text-xs flex items-center justify-between gap-2">
-              <span className="text-text-secondary">
-                {selectedIds.length} servicio{selectedIds.length > 1 ? 's' : ''} · {fmtDuration(totalDuration)} en total
-              </span>
-              {selectedIds.length > 1 && <span className="text-gold">Se agenda todo en una cita</span>}
+            <div className="-mt-2 mb-3">
+              <div className="bg-bg-elevated border border-border rounded-lg px-3 py-2 flex items-center justify-between gap-3">
+                <span className="text-xs text-text-secondary leading-snug">
+                  {selectedIds.length} servicio{selectedIds.length > 1 ? 's' : ''} · {fmtDuration(totalDuration)}
+                  {selectedIds.length > 1 && <span className="block text-gold">Se agenda todo en una cita</span>}
+                </span>
+                <TotalPrice services={selectedServices} />
+              </div>
             </div>
           )}
 
@@ -413,16 +416,39 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
 // Resumen de precios antes de confirmar: cada servicio en USD con su
 // equivalente en CUP, el total, y el aviso de que la tasa (El Toque) se
 // aplica el día del servicio, no hoy.
+// Total de lo seleccionado: USD (rango si algún servicio lo tiene) y su
+// equivalente en CUP a la tasa de hoy.
+function totalOf(services, rate) {
+  const min = services.reduce((t, s) => t + (Number(s.price) || 0), 0);
+  const max = services.reduce((t, s) => t + (Number(s.price_max) || Number(s.price) || 0), 0);
+  const isRange = max > min;
+  const lo = cupAmount(min, rate);
+  return {
+    usd: isRange ? `${usdAmount(min)} – ${usdAmount(max)}` : usdAmount(min),
+    cup: lo && (isRange ? `${lo} – ${cupAmount(max, rate)} CUP` : `${lo} CUP`),
+  };
+}
+
+// Total compacto que acompaña a la lista de servicios mientras se eligen.
+export function TotalPrice({ services }) {
+  const { rate } = useFx();
+  if (!services.length) return null;
+  const { usd, cup } = totalOf(services, rate);
+  return (
+    <span className="text-right flex-shrink-0 leading-tight">
+      <span className="font-serif font-bold text-base text-gold">
+        {usd} <span className="font-sans text-[9px] tracking-[0.15em] opacity-60">USD</span>
+      </span>
+      {cup && <span className="block text-[10px] text-text-muted">≈ {cup}</span>}
+    </span>
+  );
+}
+
 function PriceSummary({ services }) {
   const { rate } = useFx();
   if (!services.length) return null;
 
-  const min = services.reduce((t, s) => t + (Number(s.price) || 0), 0);
-  const max = services.reduce((t, s) => t + (Number(s.price_max) || Number(s.price) || 0), 0);
-  const isRange = max > min;
-  const totalUsd = isRange ? `${usdAmount(min)} – ${usdAmount(max)}` : usdAmount(min);
-  const lo = cupAmount(min, rate);
-  const totalCup = lo && (isRange ? `${lo} – ${cupAmount(max, rate)} CUP` : `${lo} CUP`);
+  const { usd: totalUsd, cup: totalCup } = totalOf(services, rate);
 
   const line = (s) => {
     const hasMax = Number(s.price_max) > Number(s.price);
