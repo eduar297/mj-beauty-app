@@ -7,6 +7,8 @@ import {
 } from '../lib/api';
 import { computeAllSlots } from '../lib/availability.js';
 import { todayISO, longDate, closedInfoFor } from '../lib/dates';
+import { useFx } from '../hooks/useFx.jsx';
+import { usdAmount, cupAmount } from '../lib/money';
 
 // Clave para recordar a la clienta en este navegador. Mejora la UX en mobile:
 // al volver a reservar, el teléfono (y el nombre) ya están pre-llenados.
@@ -233,6 +235,8 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
           )}
         </div>
 
+        <PriceSummary services={selectedServices} />
+
         <div className="text-xs text-text-secondary bg-gold/10 border border-gold/30 rounded-lg px-3 py-2 mb-3 flex items-start gap-2">
           <Icon name="clock" size={13} color="var(--gold)" />
           <span>Si necesitamos mover la hora, te avisamos por WhatsApp antes.</span>
@@ -386,6 +390,8 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
             </div>
           </Field>
 
+          <PriceSummary services={selectedServices} />
+
           {err && (
             <div role="alert" className="text-red-400 text-sm bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2 mb-3">
               {err}
@@ -400,6 +406,60 @@ export default function PublicBookingForm({ onClose, defaultService, services: s
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+// Resumen de precios antes de confirmar: cada servicio en USD con su
+// equivalente en CUP, el total, y el aviso de que la tasa (El Toque) se
+// aplica el día del servicio, no hoy.
+function PriceSummary({ services }) {
+  const { rate } = useFx();
+  if (!services.length) return null;
+
+  const min = services.reduce((t, s) => t + (Number(s.price) || 0), 0);
+  const max = services.reduce((t, s) => t + (Number(s.price_max) || Number(s.price) || 0), 0);
+  const isRange = max > min;
+  const totalUsd = isRange ? `${usdAmount(min)} – ${usdAmount(max)}` : usdAmount(min);
+  const lo = cupAmount(min, rate);
+  const totalCup = lo && (isRange ? `${lo} – ${cupAmount(max, rate)} CUP` : `${lo} CUP`);
+
+  const line = (s) => {
+    const hasMax = Number(s.price_max) > Number(s.price);
+    const usd = hasMax ? `${usdAmount(s.price)} – ${usdAmount(s.price_max)}` : usdAmount(s.price);
+    const c = cupAmount(s.price, rate);
+    const cup = c && (hasMax ? `${c} – ${cupAmount(s.price_max, rate)} CUP` : `${c} CUP`);
+    return { usd, cup };
+  };
+
+  return (
+    <div className="bg-bg-elevated border border-border rounded-xl overflow-hidden mb-3">
+      {services.map(s => {
+        const { usd, cup } = line(s);
+        return (
+          <div key={s.id} className="px-3 py-2 flex items-start justify-between gap-3 border-b border-border">
+            <span className="text-sm min-w-0 truncate">{s.name}</span>
+            <span className="text-right flex-shrink-0 leading-tight">
+              <span className="text-sm font-semibold">{usd} <span className="text-[9px] tracking-[0.15em] opacity-60">USD</span></span>
+              {cup && <span className="block text-[10px] text-text-muted">≈ {cup}</span>}
+            </span>
+          </div>
+        );
+      })}
+      <div className="px-3 py-2.5 flex items-start justify-between gap-3">
+        <span className="text-xs uppercase tracking-wider text-text-muted font-semibold mt-0.5">Total</span>
+        <span className="text-right flex-shrink-0 leading-tight">
+          <span className="font-serif font-bold text-lg text-gold">
+            {totalUsd} <span className="font-sans text-[10px] tracking-[0.15em] opacity-60">USD</span>
+          </span>
+          {totalCup && <span className="block text-[11px] text-text-muted">≈ {totalCup}</span>}
+        </span>
+      </div>
+      <div className="px-3 pb-3 text-[11px] text-text-muted leading-snug">
+        Los precios son en USD. El equivalente en CUP es solo una referencia a la
+        tasa informal de El Toque de hoy{rate > 0 ? ` (${cupAmount(1, rate)} CUP por 1 USD)` : ''} y
+        puede variar: se cobra a la tasa del día del servicio.
+      </div>
     </div>
   );
 }

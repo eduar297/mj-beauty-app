@@ -1,5 +1,6 @@
 import { Icon, CAT_COLORS, CAT_ICONS } from './ui.jsx';
 import { fmtDuration } from '../lib/duration';
+import { DualPrice } from './Price.jsx';
 
 // Orden canónico de categorías de servicio (igual que en la landing / Servicios).
 const CAT_ORDER = ['Uñas', 'Pedicura', 'Pelo', 'Faciales', 'Cejas', 'Pestañas'];
@@ -37,8 +38,13 @@ export default function ServicePicker({ services, selectedIds, onToggle, maxHeig
                 <span className={`w-4 h-4 rounded border flex-shrink-0 grid place-items-center ${checked ? 'bg-gold border-gold' : 'border-border-strong'}`}>
                   {checked && <Icon name="check" size={11} color="#0d0c0a" />}
                 </span>
-                <span className="flex-1 min-w-0 text-sm truncate">{s.name}</span>
-                <span className="text-[11px] text-text-muted flex-shrink-0">{fmtDuration(s.duration)}</span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-sm truncate">{s.name}</span>
+                  <span className="block text-[11px] text-text-muted">{fmtDuration(s.duration)}</span>
+                </span>
+                <span className="flex-shrink-0 text-[13px]">
+                  <DualPrice usd={s.price} usdMax={s.price_max} />
+                </span>
               </button>
             );
           })}
